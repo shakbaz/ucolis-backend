@@ -56,30 +56,19 @@ router.put('/profile', auth, async (req, res) => {
 });
 
 // ── PUT /users/profile/photo — upload photo de profil ─────────
-router.put('/profile/photo', auth, uploadPhoto, async (req, res) => { // ✅ sans .single()
+router.put('/profile/photo', auth, uploadPhoto, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'Aucune photo fournie' });
 
-    let photoUrl = '';
-
-    if (process.env.CLOUDINARY_CLOUD_NAME) {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder:       'ucolis/users',
-        width:        400,
-        height:       400,
-        crop:         'fill',
-        gravity:      'face',
-        quality:      'auto',
-        fetch_format: 'auto',
-      });
-      photoUrl = result.secure_url;
-    } else {
-      photoUrl = `${process.env.BASE_URL || 'http://localhost:3001'}/uploads/${req.file.filename}`;
-    }
+    // ✅ Upload buffer RAM → Cloudinary directement
+    const result = await uploadToCloudinary(req.file.buffer, 'ucolis/users', {
+      transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }],
+      resource_type: 'image',
+    });
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { photoProfil: photoUrl },
+      { photoProfil: result.secure_url }, // ✅ URL Cloudinary
       { new: true }
     );
 

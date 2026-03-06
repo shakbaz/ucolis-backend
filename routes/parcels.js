@@ -5,6 +5,7 @@ const Offer      = require('../models/Offer');
 const auth       = require('../middleware/auth');
 const { uploadPhoto } = require('../middleware/upload');
 const { PARCEL_STATUS } = require('../models/Parcel');
+const { uploadParcel, uploadToCloudinary } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -95,22 +96,17 @@ router.post('/', auth, async (req, res) => {
 });
 
 // POST upload photo pour un colis
-router.post('/upload/photo', auth, uploadPhoto, async (req, res) => {
+router.post('/upload/photo', auth, uploadParcel, async (req, res) => {
   try {
-    let photoUrl = '';
-    if (process.env.CLOUDINARY_CLOUD_NAME) {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'ucolis/parcels',
-        width: 800,
-        quality: 'auto',
-      });
-      photoUrl = result.secure_url;
-    } else {
-      photoUrl = `${process.env.BASE_URL || 'http://localhost:3001'}/uploads/${req.file.filename}`;
-    }
-    res.json({ url: photoUrl });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    if (!req.file) return res.status(400).json({ message: 'Aucune photo fournie' });
+
+    const result = await uploadToCloudinary(req.file.buffer, 'ucolis/parcels', {
+      transformation: [{ width: 800, quality: 'auto' }],
+    });
+
+    res.json({ url: result.secure_url }); // ✅ URL Cloudinary
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 

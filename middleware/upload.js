@@ -1,37 +1,35 @@
-const multer = require('multer');
+// 📄 ucolis-backend/middleware/upload.js
+
+const multer    = require('multer');
 const cloudinary = require('cloudinary').v2;
 
-// Configuration Cloudinary (optionnel - fallback local)
+// ── Config Cloudinary ─────────────────────────────────────────
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
+  api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + unique + '.' + file.mimetype.split('/')[1]);
-  },
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|pdf/;
-  const extname = allowedTypes.test(file.originalname.toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
-  if (mimetype && extname) cb(null, true);
-  else cb(new Error('Type de fichier non autorisé'), false);
+// ── Multer stocke en RAM (pas sur disque) ─────────────────────
+const storage     = multer.memoryStorage(); // ✅ zéro fichier local
+const imageFilter = (req, file, cb) => {
+  file.mimetype.startsWith('image/')
+    ? cb(null, true)
+    : cb(new Error('Seules les images sont acceptées'), false);
 };
 
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-});
+const uploadPhoto  = multer({ storage, fileFilter: imageFilter }).single('photo');
+const uploadParcel = multer({ storage, fileFilter: imageFilter }).single('photo');
 
-module.exports = {
-  uploadSingle: upload.single('file'),
-  uploadPhoto: upload.single('photo'),
-  uploadDocument: upload.single('document'),
-};
+// ── Helpers upload vers Cloudinary ───────────────────────────
+function uploadToCloudinary(buffer, folder, options = {}) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder, ...options },
+      (error, result) => error ? reject(error) : resolve(result)
+    );
+    stream.end(buffer); // ✅ envoie le buffer RAM directement
+  });
+}
+
+module.exports = { uploadPhoto, uploadParcel, uploadToCloudinary, cloudinary };
