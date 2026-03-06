@@ -4,7 +4,7 @@ const express    = require('express');
 const cloudinary = require('cloudinary').v2;
 const User       = require('../models/User');
 const auth       = require('../middleware/auth');
-const { uploadPhoto } = require('../middleware/upload');
+const { uploadPhoto, uploadToCloudinary } = require('../middleware/upload');
 
 const router = express.Router();
 
