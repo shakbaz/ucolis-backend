@@ -1,76 +1,76 @@
+// 📄 ucolis-backend/routes/users.js
+
 const express    = require('express');
-const bcrypt     = require('bcryptjs');
 const cloudinary = require('cloudinary').v2;
 const User       = require('../models/User');
-const Parcel     = require('../models/Parcel');
 const auth       = require('../middleware/auth');
-const { uploadPhoto, uploadDocument } = require('../middleware/upload');
-const { ENDPOINTS } = require('../utils/constants');
+const { uploadPhoto } = require('../middleware/upload');
 
 const router = express.Router();
 
-// GET profil public d'un utilisateur
-router.get('/:id', async (req, res) => {
+// ── GET /users/me — profil du user connecté ───────────────────
+router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-motDePasse -resetToken -resetTokenExpiry');
+    const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
     res.json(user);
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur serveur' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
-// PUT modifier profil
-router.put(ENDPOINTS.UPDATE_PROFILE, auth, async (req, res) => {
+// ── GET /users/:id — profil public d'un user ──────────────────
+router.get('/:id', async (req, res) => {
   try {
-    const allowedFields = ['prenom', 'nom', 'telephone', 'wilaya', 'ville', 'bio', 'role'];
-    const updates = {};
-    allowedFields.forEach(f => {
-      if (req.body[f] !== undefined) updates[f] = req.body[f];
-    });
+    const user = await User.findById(req.params.id)
+      .select('prenom nom photoProfil wilaya ville bio moyenne totalAvis role typeCompte statistiques createdAt');
+    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    ).select('-motDePasse');
+// ── PUT /users/profile — modifier infos profil ────────────────
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { prenom, nom, telephone, wilaya, ville, bio } = req.body;
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+
+    if (prenom)    user.prenom    = prenom.trim();
+    if (nom)       user.nom       = nom.trim();
+    if (telephone) user.telephone = telephone.trim();
+    if (wilaya)    user.wilaya    = wilaya;
+    if (ville !== undefined) user.ville = ville;
+    if (bio !== undefined)   user.bio   = bio.trim();
+
+    user.lastSeen = new Date();
+    await user.save();
 
     res.json(user);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 });
 
-// PUT changer mot de passe
-router.put(ENDPOINTS.CHANGE_PASSWORD, auth, async (req, res) => {
+// ── PUT /users/profile/photo — upload photo de profil ─────────
+router.put('/profile/photo', auth, uploadPhoto.single('photo'), async (req, res) => {
   try {
-    const { currentPassword, nouveauMotDePasse } = req.body;
-    const user = await User.findById(req.user._id).select('+motDePasse');
+    if (!req.file) return res.status(400).json({ message: 'Aucune photo fournie' });
 
-    if (!(await user.comparePassword(currentPassword))) {
-      return res.status(400).json({ message: 'Mot de passe actuel incorrect' });
-    }
-
-    user.motDePasse = nouveauMotDePasse;
-    await user.save();
-    res.json({ message: 'Mot de passe modifié avec succès' });
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur serveur' });
-  }
-});
-
-// POST upload photo de profil
-router.post('/upload/photo', auth, uploadPhoto, async (req, res) => {
-  try {
     let photoUrl = '';
 
     if (process.env.CLOUDINARY_CLOUD_NAME) {
       const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'ucolis/profiles',
-        width: 300,
-        height: 300,
-        crop: 'fill',
-        quality: 'auto',
+        folder:         'ucolis/users',
+        width:          400,
+        height:         400,
+        crop:           'fill',
+        gravity:        'face',   // ✅ cadrage automatique sur le visage
+        quality:        'auto',
+        fetch_format:   'auto',
       });
       photoUrl = result.secure_url;
     } else {
@@ -79,61 +79,45 @@ router.post('/upload/photo', auth, uploadPhoto, async (req, res) => {
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { $set: { photoProfil: photoUrl } },
+      { photoProfil: photoUrl },
       { new: true }
-    ).select('-motDePasse');
+    );
 
-    res.json({ url: photoUrl, user });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
-// POST upload document
-router.post('/upload/document', auth, uploadDocument, async (req, res) => {
+// ── PUT /users/password — changer mot de passe ────────────────
+router.put('/password', auth, async (req, res) => {
   try {
-    const { type } = req.body;
-    const allowedTypes = ['carteIdentite', 'permisConduire', 'carteGrise', 'assurance'];
-    if (!allowedTypes.includes(type)) {
-      return res.status(400).json({ message: 'Type de document invalide' });
-    }
+    const { ancienMotDePasse, nouveauMotDePasse } = req.body;
+    if (!ancienMotDePasse || !nouveauMotDePasse)
+      return res.status(400).json({ message: 'Les deux champs sont requis' });
+    if (nouveauMotDePasse.length < 6)
+      return res.status(400).json({ message: 'Minimum 6 caractères' });
 
-    let docUrl = '';
-    if (process.env.CLOUDINARY_CLOUD_NAME) {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: `ucolis/documents/${req.user._id}`,
-        resource_type: 'auto',
-      });
-      docUrl = result.secure_url;
-    } else {
-      docUrl = `${process.env.BASE_URL || 'http://localhost:3001'}/uploads/${req.file.filename}`;
-    }
+    const user = await User.findById(req.user._id).select('+motDePasse');
+    const ok   = await user.comparePassword(ancienMotDePasse);
+    if (!ok) return res.status(400).json({ message: 'Ancien mot de passe incorrect' });
 
-    const updatePath = `documents.${type}`;
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      {
-        $set: {
-          [updatePath]: docUrl,
-          'documents.statut': 'en_attente',
-        },
-      },
-      { new: true }
-    ).select('-motDePasse');
+    user.motDePasse = nouveauMotDePasse; // ← pre('save') hashera automatiquement
+    await user.save();
 
-    res.json({ url: docUrl, user });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.json({ message: 'Mot de passe mis à jour' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 });
 
-// GET mes avis reçus
-router.get(`${ENDPOINTS.MY_RATINGS}`, auth, async (req, res) => {
+// ── PATCH /users/last-seen — mettre à jour lastSeen ───────────
+router.patch('/last-seen', auth, async (req, res) => {
   try {
-    // À compléter si tu ajoutes un modèle Rating
-    res.json({ ratings: [], moyenne: req.user.moyenne, total: req.user.totalAvis });
-  } catch (error) {
-    res.status(500).json({ message: 'Erreur serveur' });
+    await User.findByIdAndUpdate(req.user._id, { lastSeen: new Date() });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
