@@ -1,3 +1,4 @@
+// 📄 ucolis-backend/server.js
 require('dotenv').config();
 const express    = require('express');
 const mongoose   = require('mongoose');
@@ -12,6 +13,7 @@ const parcelRoutes   = require('./routes/parcels');
 const offerRoutes    = require('./routes/offers');
 const chatRoutes     = require('./routes/chat');
 const userRoutes     = require('./routes/users');
+const notificationRoutes = require('./routes/notifications');
 const { ENDPOINTS }  = require('./utils/constants');
 
 const app = express();
@@ -58,6 +60,7 @@ app.use(ENDPOINTS.PARCELS, parcelRoutes);
 app.use(ENDPOINTS.OFFERS,  offerRoutes);
 app.use(ENDPOINTS.CHAT,    chatRoutes);
 app.use(ENDPOINTS.USERS,   userRoutes);
+app.use(ENDPOINTS.NOTIFICATIONS, notificationRoutes);
 
 // Socket.io
 const io = socketIo(server, {

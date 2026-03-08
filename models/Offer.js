@@ -1,3 +1,4 @@
+// 📄 ucolis-backend/models/Offer.js
 const mongoose = require('mongoose');
 
 const OFFER_STATUS = {

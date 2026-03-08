@@ -1,3 +1,4 @@
+// 📄 ucolis-backend/utils/constants.js
 module.exports.ENDPOINTS = {
   AUTH:           '/api/auth',
   PARCELS:        '/api/parcels',
@@ -6,6 +7,7 @@ module.exports.ENDPOINTS = {
   USERS:          '/api/users',
   UPLOAD_PHOTO:   '/api/upload/photo',
   UPLOAD_DOCUMENT:'/api/upload/document',
+  NOTIFICATIONS:  '/api/notifications',
   LOGIN:          '/login',
   REGISTER:       '/register',
   LOGOUT:         '/logout',

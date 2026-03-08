@@ -1,3 +1,4 @@
+// 📄 ucolis-backend/services/notifications.js
 /**
  * Service de notifications push via Expo Push API.
  * Utilisé pour envoyer des notifications en dehors des sockets (ex: background).
