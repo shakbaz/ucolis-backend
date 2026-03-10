@@ -15,6 +15,26 @@ const {
 
 const router = express.Router();
 
+// Refuse toutes les autres offres d'un colis et notifie chaque transporteur
+async function refuseOtherOffers(parcelId, acceptedOfferId, parcelTitre, io) {
+  const others = await Offer.find({
+    colis:  parcelId,
+    _id:    { $ne: acceptedOfferId },
+    statut: { $nin: [OFFER_STATUS.REFUSE, OFFER_STATUS.ANNULE] },
+  });
+
+  await Promise.all(others.map(async (o) => {
+    o.statut = OFFER_STATUS.REFUSE;
+    await o.save();
+    // Notification en base
+    await notifOffreRefusee(o.transporteur, parcelTitre, parcelId);
+    // Socket temps réel
+    if (io) io.to(o.transporteur.toString()).emit('offer_rejected', { offerId: o._id, parcelId });
+  }));
+}
+
+
+
 // GET offres d'un colis
 router.get('/parcel/:parcelId', auth, async (req, res) => {
   try {
@@ -139,11 +159,9 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
     offer.statut      = OFFER_STATUS.ACCEPTE;
     await offer.save();
 
-    // Refuser les autres offres
-    await Offer.updateMany(
-      { colis: parcel._id, _id: { $ne: offer._id } },
-      { $set: { statut: OFFER_STATUS.REFUSE } },
-    );
+    // Refuser les autres offres et notifier chaque transporteur
+    const io = req.app.locals.io;
+    await refuseOtherOffers(parcel._id, offer._id, parcel.titre, io);
 
     parcel.statut              = PARCEL_STATUS.EN_NEGOCIATION;
     parcel.transporteurAccepte = offer.transporteur;
@@ -159,7 +177,6 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
       data:    { parcelId: parcel._id, offerId: offer._id },
     });
 
-    const io = req.app.locals.io;
     if (io) io.to(parcel.expediteur.toString()).emit('offer_accepted', { offerId: offer._id, parcelId: parcel._id });
 
     res.json({ offer, parcel });
@@ -266,10 +283,9 @@ router.patch('/:id/accept', auth, async (req, res) => {
     offer.statut = OFFER_STATUS.ACCEPTE;
     await offer.save();
 
-    await Offer.updateMany(
-      { colis: parcel._id, _id: { $ne: offer._id } },
-      { $set: { statut: OFFER_STATUS.REFUSE } },
-    );
+    // Refuser les autres offres et notifier chaque transporteur
+    const io = req.app.locals.io;
+    await refuseOtherOffers(parcel._id, offer._id, parcel.titre, io);
 
     parcel.statut              = PARCEL_STATUS.EN_NEGOCIATION;
     parcel.transporteurAccepte = offer.transporteur;
@@ -278,7 +294,6 @@ router.patch('/:id/accept', auth, async (req, res) => {
 
     await notifOffreAcceptee(offer.transporteur, parcel.titre, parcel._id, offer._id);
 
-    const io = req.app.locals.io;
     if (io) io.to(offer.transporteur.toString()).emit('offer_accepted', { offerId: offer._id, parcelId: parcel._id });
 
     res.json({ offer, parcel });
