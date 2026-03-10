@@ -89,6 +89,12 @@ router.post('/', auth, async (req, res) => {
     const transporteurNom = `${offer.transporteur.prenom} ${offer.transporteur.nom}`;
     await notifNouvelleOffre(parcel.expediteur, transporteurNom, parcel.titre, parcel._id, offer._id);
 
+    // Passe le colis en négociation dès la 1ère offre
+    if (parcel.statut === PARCEL_STATUS.DISPONIBLE) {
+      parcel.statut = PARCEL_STATUS.EN_NEGOCIATION;
+      await parcel.save();
+    }
+
     const io = req.app.locals.io;
     if (io) io.to(parcel.expediteur.toString()).emit('new_offer', { parcelId: colisId, offer });
 
@@ -163,7 +169,7 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
     const io = req.app.locals.io;
     await refuseOtherOffers(parcel._id, offer._id, parcel.titre, io);
 
-    parcel.statut              = PARCEL_STATUS.EN_NEGOCIATION;
+    parcel.statut              = PARCEL_STATUS.ACCEPTE;
     parcel.transporteurAccepte = offer.transporteur;
     parcel.prixFinal           = offer.prixPropose;
     await parcel.save();
@@ -287,7 +293,7 @@ router.patch('/:id/accept', auth, async (req, res) => {
     const io = req.app.locals.io;
     await refuseOtherOffers(parcel._id, offer._id, parcel.titre, io);
 
-    parcel.statut              = PARCEL_STATUS.EN_NEGOCIATION;
+    parcel.statut              = PARCEL_STATUS.ACCEPTE;
     parcel.transporteurAccepte = offer.transporteur;
     parcel.prixFinal           = offer.prixPropose;
     await parcel.save();
