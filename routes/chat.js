@@ -3,27 +3,25 @@ const express      = require('express');
 const Conversation = require('../models/Conversation');
 const Message      = require('../models/Message');
 const auth         = require('../middleware/auth');
+const { createNotification } = require('../utils/notifHelper');
 
 const router = express.Router();
 
 // GET toutes mes conversations
 router.get('/conversations', auth, async (req, res) => {
   try {
-    const conversations = await Conversation.find({
-      participants: req.user._id,
-    })
+    const conversations = await Conversation.find({ participants: req.user._id })
       .populate('participants', 'prenom nom photoProfil lastSeen')
       .populate('dernierMessage')
       .populate('colis', 'titre wilayaDepart wilayaArrivee statut photos')
       .sort({ updatedAt: -1 });
-
     res.json(conversations);
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur' });
   }
 });
 
-// GET ou créer une conversation entre deux utilisateurs
+// POST créer ou retrouver une conversation
 router.post('/conversations', auth, async (req, res) => {
   try {
     const { recipientId, colisId } = req.body;
@@ -36,8 +34,8 @@ router.post('/conversations', auth, async (req, res) => {
     if (!conversation) {
       conversation = new Conversation({
         participants: [req.user._id, recipientId],
-        colis: colisId || null,
-        unreadCount: [
+        colis:        colisId || null,
+        unreadCount:  [
           { user: req.user._id, count: 0 },
           { user: recipientId,  count: 0 },
         ],
@@ -53,7 +51,7 @@ router.post('/conversations', auth, async (req, res) => {
   }
 });
 
-// GET messages d'une conversation
+// GET messages d'une conversation — retourne { messages, total, page }
 router.get('/conversations/:id/messages', auth, async (req, res) => {
   try {
     const { page = 1, limit = 30 } = req.query;
@@ -65,11 +63,14 @@ router.get('/conversations/:id/messages', auth, async (req, res) => {
     });
     if (!conversation) return res.status(404).json({ message: 'Conversation non trouvée' });
 
-    const messages = await Message.find({ conversation: req.params.id })
-      .populate('auteur', 'prenom nom photoProfil')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit));
+    const [messages, total] = await Promise.all([
+      Message.find({ conversation: req.params.id })
+        .populate('auteur', 'prenom nom photoProfil')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      Message.countDocuments({ conversation: req.params.id }),
+    ]);
 
     // Marquer comme lus
     await Message.updateMany(
@@ -80,11 +81,15 @@ router.get('/conversations/:id/messages', auth, async (req, res) => {
     // Reset unread count
     await Conversation.findByIdAndUpdate(req.params.id, {
       $set: { 'unreadCount.$[elem].count': 0 },
-    }, {
-      arrayFilters: [{ 'elem.user': req.user._id }],
-    });
+    }, { arrayFilters: [{ 'elem.user': req.user._id }] });
 
-    res.json(messages.reverse());
+    // ✅ Retourne un objet structuré { messages, total, page }
+    res.json({
+      messages:   messages.reverse(),
+      total,
+      page:       Number(page),
+      totalPages: Math.ceil(total / Number(limit)),
+    });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur' });
   }
@@ -98,7 +103,7 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
     const conversation = await Conversation.findOne({
       _id: req.params.id,
       participants: req.user._id,
-    });
+    }).populate('colis', 'titre');
     if (!conversation) return res.status(404).json({ message: 'Conversation non trouvée' });
 
     const message = new Message({
@@ -111,27 +116,35 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
     await message.save();
     await message.populate('auteur', 'prenom nom photoProfil');
 
-    // Mettre à jour la conversation
     const otherParticipant = conversation.participants.find(
       p => p.toString() !== req.user._id.toString()
     );
+
+    // Mettre à jour la conversation
     await Conversation.findByIdAndUpdate(req.params.id, {
       $set: { dernierMessage: message._id, updatedAt: new Date() },
       $inc: { 'unreadCount.$[elem].count': 1 },
-    }, {
-      arrayFilters: [{ 'elem.user': otherParticipant }],
+    }, { arrayFilters: [{ 'elem.user': otherParticipant }] });
+
+    // ✅ Notification persistée en base
+    const senderName = `${req.user.prenom} ${req.user.nom}`;
+    const parcelTitre = conversation.colis?.titre || 'une livraison';
+    await createNotification({
+      destinataire: otherParticipant,
+      type:    'nouveau_message',
+      titre:   `💬 Message de ${senderName}`,
+      message: `${contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu}`,
+      data:    {
+        conversationId: req.params.id,
+        parcelId:       conversation.colis?._id,
+      },
     });
 
-    // Émettre via Socket.io
+    // Socket.io temps réel
     const io = req.app.locals.io;
     if (io) {
       io.to(req.params.id).emit('new_message', { message });
-      io.to(otherParticipant.toString()).emit('notification', {
-        type: 'new_message',
-        conversationId: req.params.id,
-        senderId: req.user._id,
-        senderName: `${req.user.prenom} ${req.user.nom}`,
-      });
+      io.to(otherParticipant.toString()).emit('new_notification');
     }
 
     res.status(201).json(message);

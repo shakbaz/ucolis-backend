@@ -21,9 +21,10 @@ const notificationSchema = new mongoose.Schema({
   message:      { type: String, required: true },
   lu:           { type: Boolean, default: false },
   data: {
-    parcelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Parcel', default: null },
-    offerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Offer',  default: null },
-    userId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User',   default: null },
+    parcelId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Parcel',       default: null },
+    offerId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Offer',        default: null },
+    userId:         { type: mongoose.Schema.Types.ObjectId, ref: 'User',         default: null },
+    conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null },
   },
 }, { timestamps: true });
 
