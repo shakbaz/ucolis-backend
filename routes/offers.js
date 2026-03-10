@@ -15,6 +15,27 @@ const {
 
 const router = express.Router();
 
+
+// Crée (ou retrouve) la conversation entre expéditeur et transporteur pour ce colis
+async function getOrCreateConversation(expediteurId, transporteurId, colisId) {
+  let conv = await Conversation.findOne({
+    participants: { $all: [expediteurId, transporteurId] },
+    colis: colisId,
+  });
+  if (!conv) {
+    conv = new Conversation({
+      participants: [expediteurId, transporteurId],
+      colis:        colisId,
+      unreadCount:  [
+        { user: expediteurId,   count: 0 },
+        { user: transporteurId, count: 0 },
+      ],
+    });
+    await conv.save();
+  }
+  return conv;
+}
+
 // Refuse toutes les autres offres d'un colis et notifie chaque transporteur
 async function refuseOtherOffers(parcelId, acceptedOfferId, parcelTitre, io) {
   const others = await Offer.find({
@@ -174,18 +195,23 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
     parcel.prixFinal           = offer.prixPropose;
     await parcel.save();
 
-    // Notifier l'expéditeur
+    // Créer la conversation
+    const conv = await getOrCreateConversation(parcel.expediteur, offer.transporteur, parcel._id);
+
+    // Notifier l'expéditeur avec l'ID de la conversation
     await createNotification({
       destinataire: parcel.expediteur,
       type:    'offre_acceptee',
-      titre:   '✅ Contre-offre acceptée !',
-      message: `Le transporteur a accepté votre contre-offre de ${offer.prixPropose} DZD`,
-      data:    { parcelId: parcel._id, offerId: offer._id },
+      titre:   '✅ Contre-offre acceptée — conversation ouverte !',
+      message: `Le transporteur a accepté votre prix de ${offer.prixPropose} DZD pour "${parcel.titre}"`,
+      data:    { parcelId: parcel._id, offerId: offer._id, conversationId: conv._id },
     });
 
-    if (io) io.to(parcel.expediteur.toString()).emit('offer_accepted', { offerId: offer._id, parcelId: parcel._id });
+    if (io) {
+      io.to(parcel.expediteur.toString()).emit('offer_accepted', { offerId: offer._id, parcelId: parcel._id, conversationId: conv._id });
+    }
 
-    res.json({ offer, parcel });
+    res.json({ offer, parcel, conversationId: conv._id });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur' });
   }
@@ -300,9 +326,23 @@ router.patch('/:id/accept', auth, async (req, res) => {
 
     await notifOffreAcceptee(offer.transporteur, parcel.titre, parcel._id, offer._id);
 
-    if (io) io.to(offer.transporteur.toString()).emit('offer_accepted', { offerId: offer._id, parcelId: parcel._id });
+    // Créer la conversation
+    const conv = await getOrCreateConversation(parcel.expediteur, offer.transporteur, parcel._id);
 
-    res.json({ offer, parcel });
+    // Notifier le transporteur avec l'ID de la conversation
+    await createNotification({
+      destinataire: offer.transporteur,
+      type:    'offre_acceptee',
+      titre:   '💬 La conversation est ouverte !',
+      message: `Votre offre pour "${parcel.titre}" a été acceptée. Vous pouvez maintenant échanger des messages.`,
+      data:    { parcelId: parcel._id, offerId: offer._id, conversationId: conv._id },
+    });
+
+    if (io) {
+      io.to(offer.transporteur.toString()).emit('offer_accepted', { offerId: offer._id, parcelId: parcel._id, conversationId: conv._id });
+    }
+
+    res.json({ offer, parcel, conversationId: conv._id });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur' });
   }
