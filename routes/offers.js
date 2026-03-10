@@ -62,32 +62,15 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ message: 'Vous avez déjà une offre en attente sur ce colis' });
     }
 
-    const offer = new Offer({
-      colis: colisId,
-      transporteur: req.user._id,
-      prixPropose,
-      message,
-    });
-
+    const offer = new Offer({ colis: colisId, transporteur: req.user._id, prixPropose, message });
     await offer.save();
     await offer.populate('transporteur', 'prenom nom photoProfil wilaya moyenne totalAvis typeCompte');
 
     const transporteurNom = `${offer.transporteur.prenom} ${offer.transporteur.nom}`;
-    await notifNouvelleOffre(
-      parcel.expediteur,
-      transporteurNom,
-      parcel.titre,
-      parcel._id,
-      offer._id,
-    );
+    await notifNouvelleOffre(parcel.expediteur, transporteurNom, parcel.titre, parcel._id, offer._id);
 
     const io = req.app.locals.io;
-    if (io) {
-      io.to(parcel.expediteur.toString()).emit('new_offer', {
-        parcelId: colisId,
-        offer,
-      });
-    }
+    if (io) io.to(parcel.expediteur.toString()).emit('new_offer', { parcelId: colisId, offer });
 
     res.status(201).json(offer);
   } catch (error) {
@@ -109,8 +92,6 @@ router.patch('/:id/counter', auth, async (req, res) => {
 
     const parcel = await Parcel.findById(offer.colis);
     if (!parcel) return res.status(404).json({ message: 'Colis non trouvé' });
-
-    // Seul l'expéditeur peut faire une contre-offre
     if (parcel.expediteur.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Non autorisé' });
     }
@@ -122,7 +103,6 @@ router.patch('/:id/counter', auth, async (req, res) => {
     offer.contreOffre = { prix: Number(prixContreOffre), message: message?.trim() || null };
     await offer.save();
 
-    // Notifier le transporteur en base
     await createNotification({
       destinataire: offer.transporteur._id,
       type:    'contre_offre',
@@ -131,15 +111,8 @@ router.patch('/:id/counter', auth, async (req, res) => {
       data:    { parcelId: parcel._id, offerId: offer._id },
     });
 
-    // Notifier en temps réel
     const io = req.app.locals.io;
-    if (io) {
-      io.to(offer.transporteur._id.toString()).emit('counter_offer', {
-        offerId:  offer._id,
-        parcelId: parcel._id,
-        prix:     prixContreOffre,
-      });
-    }
+    if (io) io.to(offer.transporteur._id.toString()).emit('counter_offer', { offerId: offer._id, parcelId: parcel._id, prix: prixContreOffre });
 
     res.json(offer);
   } catch (error) {
@@ -147,7 +120,92 @@ router.patch('/:id/counter', auth, async (req, res) => {
   }
 });
 
-// PATCH accepter une offre
+// PATCH transporteur accepte la contre-offre
+router.patch('/:id/accept-counter', auth, async (req, res) => {
+  try {
+    const offer = await Offer.findById(req.params.id);
+    if (!offer) return res.status(404).json({ message: 'Offre non trouvée' });
+    if (offer.transporteur.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Non autorisé' });
+    }
+    if (offer.statut !== OFFER_STATUS.CONTRE_OFFRE || !offer.contreOffre?.prix) {
+      return res.status(400).json({ message: 'Aucune contre-offre à accepter' });
+    }
+
+    const parcel = await Parcel.findById(offer.colis);
+
+    // On accepte au prix de la contre-offre
+    offer.prixPropose = offer.contreOffre.prix;
+    offer.statut      = OFFER_STATUS.ACCEPTE;
+    await offer.save();
+
+    // Refuser les autres offres
+    await Offer.updateMany(
+      { colis: parcel._id, _id: { $ne: offer._id } },
+      { $set: { statut: OFFER_STATUS.REFUSE } },
+    );
+
+    parcel.statut              = PARCEL_STATUS.EN_NEGOCIATION;
+    parcel.transporteurAccepte = offer.transporteur;
+    parcel.prixFinal           = offer.prixPropose;
+    await parcel.save();
+
+    // Notifier l'expéditeur
+    await createNotification({
+      destinataire: parcel.expediteur,
+      type:    'offre_acceptee',
+      titre:   '✅ Contre-offre acceptée !',
+      message: `Le transporteur a accepté votre contre-offre de ${offer.prixPropose} DZD`,
+      data:    { parcelId: parcel._id, offerId: offer._id },
+    });
+
+    const io = req.app.locals.io;
+    if (io) io.to(parcel.expediteur.toString()).emit('offer_accepted', { offerId: offer._id, parcelId: parcel._id });
+
+    res.json({ offer, parcel });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// PATCH transporteur refuse la contre-offre → revient à en_attente
+router.patch('/:id/reject-counter', auth, async (req, res) => {
+  try {
+    const offer = await Offer.findById(req.params.id);
+    if (!offer) return res.status(404).json({ message: 'Offre non trouvée' });
+    if (offer.transporteur.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Non autorisé' });
+    }
+    if (offer.statut !== OFFER_STATUS.CONTRE_OFFRE) {
+      return res.status(400).json({ message: 'Aucune contre-offre à refuser' });
+    }
+
+    const parcel = await Parcel.findById(offer.colis);
+
+    // Remet l'offre en attente, efface la contre-offre
+    offer.statut      = OFFER_STATUS.EN_ATTENTE;
+    offer.contreOffre = { prix: null, message: null };
+    await offer.save();
+
+    // Notifier l'expéditeur
+    await createNotification({
+      destinataire: parcel.expediteur,
+      type:    'offre_refusee',
+      titre:   '❌ Contre-offre refusée',
+      message: `Le transporteur a refusé votre contre-offre sur "${parcel.titre}"`,
+      data:    { parcelId: parcel._id, offerId: offer._id },
+    });
+
+    const io = req.app.locals.io;
+    if (io) io.to(parcel.expediteur.toString()).emit('counter_rejected', { offerId: offer._id, parcelId: parcel._id });
+
+    res.json(offer);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// PATCH accepter une offre (expéditeur)
 router.patch('/:id/accept', auth, async (req, res) => {
   try {
     const offer  = await Offer.findById(req.params.id).populate('colis');
@@ -171,20 +229,10 @@ router.patch('/:id/accept', auth, async (req, res) => {
     parcel.prixFinal           = offer.prixPropose;
     await parcel.save();
 
-    await notifOffreAcceptee(
-      offer.transporteur,
-      parcel.titre,
-      parcel._id,
-      offer._id,
-    );
+    await notifOffreAcceptee(offer.transporteur, parcel.titre, parcel._id, offer._id);
 
     const io = req.app.locals.io;
-    if (io) {
-      io.to(offer.transporteur.toString()).emit('offer_accepted', {
-        offerId:  offer._id,
-        parcelId: parcel._id,
-      });
-    }
+    if (io) io.to(offer.transporteur.toString()).emit('offer_accepted', { offerId: offer._id, parcelId: parcel._id });
 
     res.json({ offer, parcel });
   } catch (error) {
@@ -192,7 +240,7 @@ router.patch('/:id/accept', auth, async (req, res) => {
   }
 });
 
-// PATCH refuser une offre
+// PATCH refuser une offre (expéditeur)
 router.patch('/:id/reject', auth, async (req, res) => {
   try {
     const offer = await Offer.findById(req.params.id).populate('colis');
@@ -206,11 +254,7 @@ router.patch('/:id/reject', auth, async (req, res) => {
     offer.statut = OFFER_STATUS.REFUSE;
     await offer.save();
 
-    await notifOffreRefusee(
-      offer.transporteur,
-      parcel.titre,
-      parcel._id,
-    );
+    await notifOffreRefusee(offer.transporteur, parcel.titre, parcel._id);
 
     res.json(offer);
   } catch (error) {
