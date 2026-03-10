@@ -1,10 +1,16 @@
 // 📄 ucolis-backend/routes/offers.js
+
 const express = require('express');
 const Offer   = require('../models/Offer');
 const Parcel  = require('../models/Parcel');
 const auth    = require('../middleware/auth');
 const { OFFER_STATUS }  = require('../models/Offer');
 const { PARCEL_STATUS } = require('../models/Parcel');
+const {
+  notifNouvelleOffre,
+  notifOffreAcceptee,
+  notifOffreRefusee,
+} = require('../utils/notifHelper');
 
 const router = express.Router();
 
@@ -12,28 +18,27 @@ const router = express.Router();
 router.get('/parcel/:parcelId', auth, async (req, res) => {
   try {
     const offers = await Offer.find({ colis: req.params.parcelId })
-      .populate('transporteur', 'prenom nom photoProfil wilaya moyenne totalAvis typeCompte documents')
+      .populate('transporteur', 'prenom nom photoProfil wilaya moyenne totalAvis typeCompte')
       .sort({ createdAt: -1 });
     res.json(offers);
   } catch (error) {
-    res.status(500).json({ message: 'Erreur serveur' });
+    res.status(500).json({ message: error.message });
   }
 });
 
-// GET offres du transporteur connecté
+// GET mes offres (transporteur connecté)
 router.get('/my-offers', auth, async (req, res) => {
   try {
     const offers = await Offer.find({ transporteur: req.user._id })
       .populate('colis')
-      .populate('transporteur', 'prenom nom photoProfil wilaya moyenne')
       .sort({ createdAt: -1 });
     res.json(offers);
   } catch (error) {
-    res.status(500).json({ message: 'Erreur serveur' });
+    res.status(500).json({ message: error.message });
   }
 });
 
-// POST soumettre une offre
+// POST créer une offre
 router.post('/', auth, async (req, res) => {
   try {
     const { colisId, prixPropose, message } = req.body;
@@ -66,7 +71,17 @@ router.post('/', auth, async (req, res) => {
     await offer.save();
     await offer.populate('transporteur', 'prenom nom photoProfil wilaya moyenne totalAvis typeCompte');
 
-    // Notifier l'expéditeur via Socket.io
+    // ✅ Persister la notification en base pour l'expéditeur
+    const transporteurNom = `${offer.transporteur.prenom} ${offer.transporteur.nom}`;
+    await notifNouvelleOffre(
+      parcel.expediteur,
+      transporteurNom,
+      parcel.titre,
+      parcel._id,
+      offer._id,
+    );
+
+    // Notifier en temps réel via Socket.io
     const io = req.app.locals.io;
     if (io) {
       io.to(parcel.expediteur.toString()).emit('new_offer', {
@@ -81,7 +96,7 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// PUT accepter une offre
+// PATCH accepter une offre
 router.patch('/:id/accept', auth, async (req, res) => {
   try {
     const offer  = await Offer.findById(req.params.id).populate('colis');
@@ -99,16 +114,24 @@ router.patch('/:id/accept', auth, async (req, res) => {
     // Refuser toutes les autres offres sur ce colis
     await Offer.updateMany(
       { colis: parcel._id, _id: { $ne: offer._id } },
-      { $set: { statut: OFFER_STATUS.REFUSE } }
+      { $set: { statut: OFFER_STATUS.REFUSE } },
     );
 
     // Mettre à jour le colis
-    parcel.statut             = PARCEL_STATUS.EN_NEGOCIATION;
+    parcel.statut              = PARCEL_STATUS.EN_NEGOCIATION;
     parcel.transporteurAccepte = offer.transporteur;
     parcel.prixFinal           = offer.prixPropose;
     await parcel.save();
 
-    // Notifier le transporteur via Socket.io
+    // ✅ Notifier le transporteur accepté en base
+    await notifOffreAcceptee(
+      offer.transporteur,
+      parcel.titre,
+      parcel._id,
+      offer._id,
+    );
+
+    // Notifier en temps réel via Socket.io
     const io = req.app.locals.io;
     if (io) {
       io.to(offer.transporteur.toString()).emit('offer_accepted', {
@@ -123,7 +146,7 @@ router.patch('/:id/accept', auth, async (req, res) => {
   }
 });
 
-// PUT refuser une offre
+// PATCH refuser une offre
 router.patch('/:id/reject', auth, async (req, res) => {
   try {
     const offer = await Offer.findById(req.params.id).populate('colis');
@@ -136,6 +159,14 @@ router.patch('/:id/reject', auth, async (req, res) => {
 
     offer.statut = OFFER_STATUS.REFUSE;
     await offer.save();
+
+    // ✅ Notifier le transporteur refusé en base
+    await notifOffreRefusee(
+      offer.transporteur,
+      parcel.titre,
+      parcel._id,
+    );
+
     res.json(offer);
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur' });
