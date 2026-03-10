@@ -1,9 +1,12 @@
+// 📄 ucolis-backend/models/Notification.js
+
 const mongoose = require('mongoose');
 
 const NOTIF_TYPES = {
   NOUVELLE_OFFRE:    'nouvelle_offre',
   OFFRE_ACCEPTEE:    'offre_acceptee',
   OFFRE_REFUSEE:     'offre_refusee',
+  CONTRE_OFFRE:      'contre_offre',
   COLIS_EN_LIVRAISON:'colis_en_livraison',
   COLIS_LIVRE:       'colis_livre',
   NOUVEAU_MESSAGE:   'nouveau_message',
@@ -24,7 +27,6 @@ const notificationSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-// ✅ Index pour requêtes rapides par destinataire
 notificationSchema.index({ destinataire: 1, createdAt: -1 });
 notificationSchema.index({ destinataire: 1, lu: 1 });
 
