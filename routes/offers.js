@@ -205,6 +205,53 @@ router.patch('/:id/reject-counter', auth, async (req, res) => {
   }
 });
 
+
+// PATCH transporteur propose un nouveau prix en réponse à la contre-offre
+router.patch('/:id/reoffer', auth, async (req, res) => {
+  try {
+    const { prixPropose, message } = req.body;
+    if (!prixPropose || Number(prixPropose) < 100) {
+      return res.status(400).json({ message: 'Prix invalide (min 100 DZD)' });
+    }
+
+    const offer = await Offer.findById(req.params.id);
+    if (!offer) return res.status(404).json({ message: 'Offre non trouvée' });
+    if (offer.transporteur.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Non autorisé' });
+    }
+    if (offer.statut !== OFFER_STATUS.CONTRE_OFFRE) {
+      return res.status(400).json({ message: 'Aucune contre-offre en cours' });
+    }
+
+    const parcel = await Parcel.findById(offer.colis);
+
+    // Nouveau prix proposé, on efface la contre-offre et repasse en_attente
+    offer.prixPropose  = Number(prixPropose);
+    offer.message      = message?.trim() || offer.message;
+    offer.statut       = OFFER_STATUS.EN_ATTENTE;
+    offer.contreOffre  = { prix: null, message: null };
+    await offer.save();
+
+    // Notifier l'expéditeur
+    await offer.populate('transporteur', 'prenom nom');
+    const transporteurNom = `${offer.transporteur.prenom} ${offer.transporteur.nom}`;
+    await createNotification({
+      destinataire: parcel.expediteur,
+      type:    'nouvelle_offre',
+      titre:   '🔄 Nouvelle proposition reçue',
+      message: `${transporteurNom} propose maintenant ${prixPropose} DZD pour "${parcel.titre}"`,
+      data:    { parcelId: parcel._id, offerId: offer._id },
+    });
+
+    const io = req.app.locals.io;
+    if (io) io.to(parcel.expediteur.toString()).emit('new_offer', { parcelId: parcel._id, offer });
+
+    res.json(offer);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
 // PATCH accepter une offre (expéditeur)
 router.patch('/:id/accept', auth, async (req, res) => {
   try {
