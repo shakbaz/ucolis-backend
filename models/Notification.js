@@ -6,7 +6,7 @@ const NOTIF_TYPES = {
   NOUVELLE_OFFRE:    'nouvelle_offre',
   OFFRE_ACCEPTEE:    'offre_acceptee',
   OFFRE_REFUSEE:     'offre_refusee',
-  CONTRE_OFFRE:      'contre_offre',
+  CONTRE_OFFRE:      'contre_offre',      // ✅ ajouté
   COLIS_EN_LIVRAISON:'colis_en_livraison',
   COLIS_LIVRE:       'colis_livre',
   NOUVEAU_MESSAGE:   'nouveau_message',
@@ -21,10 +21,10 @@ const notificationSchema = new mongoose.Schema({
   message:      { type: String, required: true },
   lu:           { type: Boolean, default: false },
   data: {
-    parcelId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Parcel',       default: null },
-    offerId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Offer',        default: null },
-    userId:         { type: mongoose.Schema.Types.ObjectId, ref: 'User',         default: null },
-    conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null },
+    parcelId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Parcel', default: null },
+    offerId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Offer',  default: null },
+    userId:        { type: mongoose.Schema.Types.ObjectId, ref: 'User',   default: null },
+    conversationId:{ type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null },
   },
 }, { timestamps: true });
 

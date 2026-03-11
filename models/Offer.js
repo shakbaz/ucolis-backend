@@ -4,10 +4,10 @@ const mongoose = require('mongoose');
 
 const OFFER_STATUS = {
   EN_ATTENTE:   'en_attente',
-  CONTRE_OFFRE: 'contre_offre',
   ACCEPTE:      'accepte',
   REFUSE:       'refuse',
   ANNULE:       'annule',
+  CONTRE_OFFRE: 'contre_offre',  // ✅ ajouté
 };
 
 const offerSchema = new mongoose.Schema({
@@ -16,11 +16,10 @@ const offerSchema = new mongoose.Schema({
   prixPropose:  { type: Number, required: true, min: 0 },
   message:      { type: String, maxlength: 500 },
   statut:       { type: String, enum: Object.values(OFFER_STATUS), default: OFFER_STATUS.EN_ATTENTE },
-
-  // ✅ NOUVEAU — contre-offre de l'expéditeur
+  // ✅ Contre-offre de l'expéditeur
   contreOffre: {
-    prix:    { type: Number, default: null },
-    message: { type: String, maxlength: 500, default: null },
+    prix:    { type: Number },
+    message: { type: String, maxlength: 500 },
   },
 }, {
   timestamps: true,
