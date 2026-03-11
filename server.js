@@ -8,17 +8,18 @@ const rateLimit  = require('express-rate-limit');
 const http       = require('http');
 const socketIo   = require('socket.io');
 
-const authRoutes         = require('./routes/auth');
-const parcelRoutes       = require('./routes/parcels');
-const offerRoutes        = require('./routes/offers');
-const chatRoutes         = require('./routes/chat');
-const userRoutes         = require('./routes/users');
+const authRoutes     = require('./routes/auth');
+const parcelRoutes   = require('./routes/parcels');
+const offerRoutes    = require('./routes/offers');
+const chatRoutes     = require('./routes/chat');
+const userRoutes     = require('./routes/users');
 const notificationRoutes = require('./routes/notifications');
-const { ENDPOINTS }      = require('./utils/constants');
+const { ENDPOINTS }  = require('./utils/constants');
 
-const app    = express();
+const app = express();
 const server = http.createServer(app);
 
+// ✅ OBLIGATOIRE sur Render/Railway/Heroku — doit être EN PREMIER
 app.set('trust proxy', 1);
 
 app.use(helmet());
@@ -33,7 +34,7 @@ app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ✅ Health check AVANT le rate limiter
+// ✅ Health check AVANT le rate limiter — jamais bloqué
 app.get('/api/health', (req, res) => {
   res.json({
     status:    'ok',
@@ -43,28 +44,22 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ✅ Rate limiter — clé = token JWT (pas IP)
-// Évite que tous les users Snack/Expo partagent le même compteur IP
+// Rate limiting — exclut /api/health
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max:      500,
+  windowMs: 15 * 60 * 1000, // 15 min
+  max:      300,             // 300 req / IP / 15 min (était 100)
   message:  { error: 'Trop de requêtes. Réessayez dans 15 minutes.' },
   validate: { xForwardedForHeader: false },
-  keyGenerator: (req) => {
-    const auth = req.headers['authorization'];
-    if (auth && auth.startsWith('Bearer ')) return auth.slice(7, 47);
-    return req.ip;
-  },
-  skip: (req) => req.path === '/api/health',
+  skip: (req) => req.path === '/api/health', // sécurité supplémentaire
 });
 app.use(limiter);
 
 // Routes
-app.use(ENDPOINTS.AUTH,          authRoutes);
-app.use(ENDPOINTS.PARCELS,       parcelRoutes);
-app.use(ENDPOINTS.OFFERS,        offerRoutes);
-app.use(ENDPOINTS.CHAT,          chatRoutes);
-app.use(ENDPOINTS.USERS,         userRoutes);
+app.use(ENDPOINTS.AUTH,    authRoutes);
+app.use(ENDPOINTS.PARCELS, parcelRoutes);
+app.use(ENDPOINTS.OFFERS,  offerRoutes);
+app.use(ENDPOINTS.CHAT,    chatRoutes);
+app.use(ENDPOINTS.USERS,   userRoutes);
 app.use(ENDPOINTS.NOTIFICATIONS, notificationRoutes);
 
 // Socket.io
@@ -77,6 +72,7 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ MongoDB connecté'))
   .catch(err => console.error('❌ MongoDB erreur:', err));
 
+// Socket handlers
 io.on('connection', (socket) => {
   socket.on('join_conversation', (conversationId) => {
     socket.join(conversationId);
@@ -88,7 +84,7 @@ io.on('connection', (socket) => {
 
 app.locals.io = io;
 
-// Ping anti-sleep Render free tier
+// Ping anti-sleep pour Render free tier
 if (process.env.RENDER_EXTERNAL_URL) {
   setInterval(() => {
     try {
