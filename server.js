@@ -34,25 +34,24 @@ app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { error: 'Trop de requêtes. Réessayez dans 15 minutes.' },
-  // ✅ Désactive la validation qui causait l'erreur
-  validate: { xForwardedForHeader: false },
-});
-app.use(limiter);
-
-// Health check
 app.get('/api/health', (req, res) => {
   res.json({
-    status: 'ok',
-    message: '✅ UCOLIS API opérationnelle',
+    status:    'ok',
+    message:   '✅ UCOLIS API opérationnelle',
     timestamp: new Date().toISOString(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connecté' : 'déconnecté',
+    mongodb:   mongoose.connection.readyState === 1 ? 'connecté' : 'déconnecté',
   });
 });
+
+// Rate limiting — exclut /api/health
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max:      300,             // 300 req / IP / 15 min (était 100)
+  message:  { error: 'Trop de requêtes. Réessayez dans 15 minutes.' },
+  validate: { xForwardedForHeader: false },
+  skip: (req) => req.path === '/api/health',
+});
+app.use(limiter);
 
 // Routes
 app.use(ENDPOINTS.AUTH,    authRoutes);
