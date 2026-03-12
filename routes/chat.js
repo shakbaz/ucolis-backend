@@ -12,8 +12,7 @@ router.get('/conversations', auth, async (req, res) => {
   try {
     const conversations = await Conversation.find({ participants: req.user._id })
       .populate('participants', 'prenom nom photoProfil lastSeen')
-      .populate('dernierMessage')
-      .populate('colis', 'titre wilayaDepart wilayaArrivee statut photos')
+      .populate('dernierMessage')   // ✅ on utilise createdAt du message pour l'horodatage
       .sort({ updatedAt: -1 });
     res.json(conversations);
   } catch (error) {
@@ -26,15 +25,14 @@ router.post('/conversations', auth, async (req, res) => {
   try {
     const { recipientId, colisId } = req.body;
 
+    // ✅ Une seule conversation par paire d'utilisateurs — indépendant du colis
     let conversation = await Conversation.findOne({
-      participants: { $all: [req.user._id, recipientId] },
-      colis: colisId || null,
+      participants: { $all: [req.user._id, recipientId], $size: 2 },
     });
 
     if (!conversation) {
       conversation = new Conversation({
         participants: [req.user._id, recipientId],
-        colis:        colisId || null,
         unreadCount:  [
           { user: req.user._id, count: 0 },
           { user: recipientId,  count: 0 },
@@ -44,7 +42,6 @@ router.post('/conversations', auth, async (req, res) => {
     }
 
     await conversation.populate('participants', 'prenom nom photoProfil lastSeen');
-    await conversation.populate('colis', 'titre wilayaDepart wilayaArrivee statut photos');
     res.json(conversation);
   } catch (error) {
     res.status(400).json({ message: error.message });

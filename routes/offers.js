@@ -131,7 +131,7 @@ router.patch('/:id/accept', auth, async (req, res) => {
     try {
       const Conversation = require('../models/Conversation');
       let conv = await Conversation.findOne({
-        participants: { $all: [parcel.expediteur._id, offer.transporteur._id] },
+        participants: { $all: [parcel.expediteur._id, offer.transporteur._id], $size: 2 },
         colis: parcel._id,
       });
       if (!conv) {
@@ -261,7 +261,7 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
     try {
       const Conversation = require('../models/Conversation');
       let conv = await Conversation.findOne({
-        participants: { $all: [parcel.expediteur._id, offer.transporteur._id] },
+        participants: { $all: [parcel.expediteur._id, offer.transporteur._id], $size: 2 },
         colis: parcel._id,
       });
       if (!conv) {
