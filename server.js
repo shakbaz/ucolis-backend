@@ -101,7 +101,8 @@ if (process.env.RENDER_EXTERNAL_URL) {
 }
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+// ✅ '0.0.0.0' obligatoire sur Render pour que le port soit détecté
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Serveur UCOLIS sur http://localhost:${PORT}`);
   console.log(`📱 Frontend: ${process.env.FRONTEND_URL || '*'}`);
 });
