@@ -6,6 +6,7 @@ const Parcel  = require('../models/Parcel');
 const Offer   = require('../models/Offer');
 const Review  = require('../models/Review');
 const adminAuth = require('../middleware/adminAuth');
+const Report  = require('../models/Report');
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ router.get('/stats', adminAuth, async (req, res) => {
       parcelsByStatus,
       totalReviews,
       docsEnAttente,
+      signalementsEnAttente,
       newUsersThisMonth,
       newParcelsThisMonth,
     ] = await Promise.all([
@@ -35,6 +37,7 @@ router.get('/stats', adminAuth, async (req, res) => {
       ]),
       Review.countDocuments(),
       User.countDocuments({ 'documents.statut': 'en_attente' }),
+      Report.countDocuments({ statut: 'en_attente' }),
       User.countDocuments({
         isAdmin: false,
         createdAt: { $gte: new Date(new Date().setDate(1)) },
@@ -52,6 +55,7 @@ router.get('/stats', adminAuth, async (req, res) => {
       parcels: { total: totalParcels, parStatus: statusMap, newThisMonth: newParcelsThisMonth },
       reviews: { total: totalReviews },
       docs:    { enAttente: docsEnAttente },
+      signalements: { enAttente: signalementsEnAttente },
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
