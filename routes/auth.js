@@ -23,16 +23,25 @@ router.post(ENDPOINTS.LOGIN, async (req, res) => {
       .select('+motDePasse');
 
     if (!user) {
-      return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
+      return res.status(401).json({
+        message: 'Aucun compte associé à cet email',
+        code:    'EMAIL_NOT_FOUND',
+      });
     }
 
     if (!user.isActif) {
-      return res.status(403).json({ message: 'Compte désactivé' });
+      return res.status(403).json({
+        message: 'Compte suspendu',
+        code:    'ACCOUNT_SUSPENDED',
+      });
     }
 
     const isMatch = await user.comparePassword(motDePasse);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
+      return res.status(401).json({
+        message: 'Mot de passe incorrect',
+        code:    'WRONG_PASSWORD',
+      });
     }
 
     const token = user.generateToken();
