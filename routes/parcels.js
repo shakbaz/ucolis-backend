@@ -9,6 +9,7 @@ const { uploadPhoto } = require('../middleware/upload');
 const { PARCEL_STATUS } = require('../models/Parcel');
 const { uploadParcel, uploadToCloudinary } = require('../middleware/upload');
 const { createNotification } = require('../utils/notifHelper');
+const User = require('../models/User');
 
 const router = express.Router();
 
@@ -113,6 +114,10 @@ router.post('/', auth, async (req, res) => {
     });
 
     await parcel.save();
+    // ✅ Incrémenter le compteur de colis publiés de l'expéditeur
+    await User.findByIdAndUpdate(req.user._id, {
+      $inc: { 'statistiques.colisPublies': 1 },
+    });
     await parcel.populate('expediteur', 'prenom nom photoProfil wilaya moyenne');
     res.status(201).json(parcel);
   } catch (error) {
@@ -213,6 +218,12 @@ router.patch('/:id/status', auth, async (req, res) => {
     }
 
     if (statut === 'livre') {
+      // ✅ Incrémenter le compteur de livraisons du transporteur
+      if (parcel.transporteurAccepte) {
+        await User.findByIdAndUpdate(parcel.transporteurAccepte, {
+          $inc: { 'statistiques.colisLivres': 1 },
+        });
+      }
       // ✅ Notifier l'expéditeur → lui demander de noter le transporteur
       await createNotification({
         destinataire: parcel.expediteur,
@@ -241,7 +252,7 @@ router.patch('/:id/status', auth, async (req, res) => {
       if (autreUserId) {
         await createNotification({
           destinataire: autreUserId,
-          type:    'offre_refusee',
+          type:    'offre_refusee', // type générique pour annulation
           titre:   '❌ Annonce annulée',
           message: `L'annonce "${parcel.titre}" a été annulée`,
           data:    { parcelId: parcel._id },
