@@ -1,7 +1,7 @@
 // 📄 ucolis-backend/routes/ratings.js
 
 const express = require('express');
-const Avis    = require('../models/Avis');
+const Review  = require('../models/Review');
 const Parcel  = require('../models/Parcel');
 const User    = require('../models/User');
 const auth    = require('../middleware/auth');
@@ -52,13 +52,13 @@ router.post('/', auth, async (req, res) => {
     }
 
     // Vérifier si l'avis existe déjà
-    const existing = await Avis.findOne({ colis: colisId, auteur: req.user._id });
+    const existing = await Review.findOne({ colis: colisId, auteur: req.user._id });
     if (existing) {
       return res.status(409).json({ message: 'Vous avez déjà noté ce colis' });
     }
 
     // Créer l'avis
-    const avis = await Avis.create({
+    const review = await Review.create({
       colis:        colisId,
       auteur:       req.user._id,
       destinataire: destinataireId,
@@ -68,8 +68,8 @@ router.post('/', auth, async (req, res) => {
     });
 
     // Mettre à jour la moyenne du destinataire
-    const stats = await Avis.aggregate([
-      { $match: { destinataire: avis.destinataire } },
+    const stats = await Review.aggregate([
+      { $match: { destinataire: review.destinataire } },
       { $group: { _id: null, moyenne: { $avg: '$note' }, total: { $sum: 1 } } },
     ]);
     if (stats.length > 0) {
@@ -79,8 +79,8 @@ router.post('/', auth, async (req, res) => {
       });
     }
 
-    await avis.populate('auteur', 'prenom nom photoProfil');
-    res.status(201).json(avis);
+    await review.populate('auteur', 'prenom nom photoProfil');
+    res.status(201).json(review);
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({ message: 'Vous avez déjà noté ce colis' });
@@ -92,7 +92,7 @@ router.post('/', auth, async (req, res) => {
 // ── GET /ratings/check/:colisId — Vérifier si l'utilisateur a déjà noté ──
 router.get('/check/:colisId', auth, async (req, res) => {
   try {
-    const existing = await Avis.findOne({
+    const existing = await Review.findOne({
       colis:  req.params.colisId,
       auteur: req.user._id,
     });
@@ -107,8 +107,8 @@ router.get('/user/:userId', async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const skip  = (Number(page) - 1) * Number(limit);
-    const total = await Avis.countDocuments({ destinataire: req.params.userId });
-    const avis  = await Avis.find({ destinataire: req.params.userId })
+    const total = await Review.countDocuments({ destinataire: req.params.userId });
+    const avis  = await Review.find({ destinataire: req.params.userId })
       .populate('auteur', 'prenom nom photoProfil')
       .populate('colis', 'titre wilayaDepart wilayaArrivee')
       .sort({ createdAt: -1 })
