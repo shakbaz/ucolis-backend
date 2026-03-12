@@ -213,14 +213,25 @@ router.patch('/:id/status', auth, async (req, res) => {
     }
 
     if (statut === 'livre') {
-      // Notifier l'expéditeur
+      // ✅ Notifier l'expéditeur → lui demander de noter le transporteur
       await createNotification({
         destinataire: parcel.expediteur,
         type:    'colis_livre',
         titre:   '🎉 Colis livré !',
-        message: `Votre colis "${parcel.titre}" a été livré avec succès`,
+        message: `Votre colis "${parcel.titre}" a été livré. Notez votre transporteur !`,
         data:    { parcelId: parcel._id },
       });
+      // ✅ Notifier le transporteur → lui demander de noter l'expéditeur
+      if (parcel.transporteurAccepte) {
+        await createNotification({
+          destinataire: parcel.transporteurAccepte,
+          type:    'colis_livre',
+          titre:   '✅ Livraison confirmée !',
+          message: `Livraison de "${parcel.titre}" confirmée. Notez l'expéditeur !`,
+          data:    { parcelId: parcel._id },
+        });
+        if (io) io.to(parcel.transporteurAccepte.toString()).emit('parcel_status', { parcelId: parcel._id, statut });
+      }
       if (io) io.to(parcel.expediteur.toString()).emit('parcel_status', { parcelId: parcel._id, statut });
     }
 
@@ -230,7 +241,7 @@ router.patch('/:id/status', auth, async (req, res) => {
       if (autreUserId) {
         await createNotification({
           destinataire: autreUserId,
-          type:    'offre_refusee', // type générique pour annulation
+          type:    'offre_refusee',
           titre:   '❌ Annonce annulée',
           message: `L'annonce "${parcel.titre}" a été annulée`,
           data:    { parcelId: parcel._id },

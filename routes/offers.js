@@ -81,11 +81,16 @@ router.post('/', auth, async (req, res) => {
     }
 
     const io = req.app.locals.io;
+
+    // ✅ Message différent selon acceptation directe ou négociation
+    const isAcceptDirect = req.body.acceptationDirecte === true;
     await notify(io, {
       destinataire: parcel.expediteur._id,
       type:    'nouvelle_offre',
-      titre:   'Nouvelle offre reçue',
-      message: `${req.user.prenom} ${req.user.nom} vous propose ${prixPropose} DZD pour votre colis.`,
+      titre:   isAcceptDirect ? '🙋 Un transporteur est disponible !' : 'Nouvelle offre reçue',
+      message: isAcceptDirect
+        ? `${req.user.prenom} ${req.user.nom} accepte de livrer votre colis au prix demandé de ${prixPropose} DZD. Confirmez-le !`
+        : `${req.user.prenom} ${req.user.nom} vous propose ${prixPropose} DZD pour votre colis.`,
       parcelId: parcel._id,
       offerId:  offer._id,
     });
