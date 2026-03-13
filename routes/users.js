@@ -56,7 +56,7 @@ router.get('/me/avis', auth, async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      .select('prenom nom photoProfil wilaya ville bio moyenne totalAvis role typeCompte statistiques createdAt isActif');
+      .select('prenom nom photoProfil wilaya ville bio moyenne totalAvis role typeCompte statistiques createdAt');
     if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
     res.json(user);
   } catch (err) {
