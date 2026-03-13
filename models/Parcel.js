@@ -19,6 +19,7 @@ const parcelSchema = new mongoose.Schema({
     largeur: { type: Number, min: 0 },
     hauteur: { type: Number, min: 0 },
     volume: { type: Number, min: 0 },
+    typeVehicule: [{ type: String, enum: ['moto','voiture','break','utilitaire','camionnette','camion','semi'] }],
     prixDemande: { type: Number, required: true, min: 100 },
     wilayaDepart: { type: String, required: true },
     villeDepart: { type: String, required: true },
@@ -45,4 +46,3 @@ const parcelSchema = new mongoose.Schema({
 
 module.exports = mongoose.model('Parcel', parcelSchema);
 module.exports.PARCEL_STATUS = PARCEL_STATUS;
-
