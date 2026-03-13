@@ -358,4 +358,63 @@ router.delete('/reviews/:id', adminAuth, async (req, res) => {
   }
 });
 
+
+// ── GET /admin/conversations ─────────────────────────────────
+router.get('/conversations', adminAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    let conversations = await Conversation.find()
+      .populate('participants', 'prenom nom photoProfil')
+      .populate('dernierMessage')
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(Number(limit));
+
+    const total = await Conversation.countDocuments();
+
+    if (search) {
+      const s = search.toLowerCase();
+      conversations = conversations.filter(conv =>
+        conv.participants.some(p =>
+          `${p.prenom} ${p.nom}`.toLowerCase().includes(s)
+        )
+      );
+    }
+
+    res.json({ conversations, total, page: Number(page) });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── GET /admin/conversations/:id/messages ────────────────────
+router.get('/conversations/:id/messages', adminAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 100 } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [messages, total, conversation] = await Promise.all([
+      Message.find({ conversation: req.params.id })
+        .populate('auteur', 'prenom nom photoProfil')
+        .sort({ createdAt: 1 })
+        .skip(skip).limit(Number(limit)),
+      Message.countDocuments({ conversation: req.params.id }),
+      Conversation.findById(req.params.id)
+        .populate('participants', 'prenom nom photoProfil'),
+    ]);
+
+    if (!conversation) return res.status(404).json({ message: 'Conversation introuvable' });
+    res.json({ messages, total, conversation, page: Number(page) });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+// ── DELETE /admin/conversations/:id ──────────────────────────
+router.delete('/conversations/:id', adminAuth, async (req, res) => {
+  try {
+    await Message.deleteMany({ conversation: req.params.id });
+    await Conversation.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Conversation supprimée' });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 module.exports = router;

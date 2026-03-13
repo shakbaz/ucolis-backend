@@ -34,7 +34,8 @@ const reportSchema = new mongoose.Schema({
   // Cible du signalement (un seul rempli selon le type)
   cibleUser:   { type: mongoose.Schema.Types.ObjectId, ref: 'User',   default: null },
   cibleParcel: { type: mongoose.Schema.Types.ObjectId, ref: 'Parcel', default: null },
-  cibleAvis:   { type: mongoose.Schema.Types.ObjectId, ref: 'Review', default: null },
+  cibleAvis:         { type: mongoose.Schema.Types.ObjectId, ref: 'Review',       default: null },
+  cibleConversation: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null },
 
   // Note admin lors du traitement
   noteAdmin:   { type: String, default: '' },

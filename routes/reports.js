@@ -10,7 +10,7 @@ const router = express.Router();
 // ── POST /reports — signaler quelque chose (utilisateur connecté) ──
 router.post('/', auth, async (req, res) => {
   try {
-    const { type, raison, description, cibleUser, cibleParcel, cibleAvis } = req.body;
+    const { type, raison, description, cibleUser, cibleParcel, cibleAvis, cibleConversation } = req.body;
 
     // Empêcher de se signaler soi-même
     if (cibleUser && String(cibleUser) === String(req.user._id)) {
