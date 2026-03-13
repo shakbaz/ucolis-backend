@@ -359,6 +359,21 @@ router.delete('/reviews/:id', adminAuth, async (req, res) => {
 });
 
 
+
+// ── GET /admin/conversations/between/:u1/:u2 ─────────────────
+// Fallback : retrouve la conversation entre deux utilisateurs
+router.get('/conversations/between/:u1/:u2', adminAuth, async (req, res) => {
+  try {
+    const { u1, u2 } = req.params;
+    const conversation = await Conversation.findOne({
+      participants: { $all: [u1, u2], $size: 2 },
+    }).populate('participants', 'prenom nom photoProfil');
+
+    if (!conversation) return res.status(404).json({ message: 'Aucune conversation trouvée' });
+    res.json({ conversation });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 // ── GET /admin/conversations ─────────────────────────────────
 router.get('/conversations', adminAuth, async (req, res) => {
   try {

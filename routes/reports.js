@@ -32,9 +32,10 @@ router.post('/', auth, async (req, res) => {
     const report = await Report.create({
       auteur: req.user._id,
       type, raison, description,
-      cibleUser:   cibleUser   || null,
-      cibleParcel: cibleParcel || null,
-      cibleAvis:   cibleAvis   || null,
+      cibleUser:         cibleUser         || null,
+      cibleParcel:       cibleParcel       || null,
+      cibleAvis:         cibleAvis         || null,
+      cibleConversation: cibleConversation || null,
     });
 
     res.status(201).json({ message: 'Signalement envoyé', report });
