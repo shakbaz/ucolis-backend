@@ -60,6 +60,7 @@ router.get('/', adminAuth, async (req, res) => {
         .populate('cibleUser',   'prenom nom photoProfil email')
         .populate('cibleParcel', 'titre villeDepart villeArrivee statut')
         .populate('cibleAvis',   'note commentaire')
+        .populate({ path: 'cibleConversation', populate: { path: 'participants', select: 'prenom nom photoProfil' } })
         .populate('traitePar',   'prenom nom')
         .sort({ createdAt: -1 })
         .skip(skip)
