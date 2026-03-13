@@ -6,7 +6,9 @@ const Parcel  = require('../models/Parcel');
 const Offer   = require('../models/Offer');
 const Review  = require('../models/Review');
 const adminAuth = require('../middleware/adminAuth');
-const Report  = require('../models/Report');
+const Report        = require('../models/Report');
+const Conversation  = require('../models/Conversation');
+const Message       = require('../models/Message');
 
 const router = express.Router();
 
