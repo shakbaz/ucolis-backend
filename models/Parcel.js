@@ -21,6 +21,7 @@ const parcelSchema = new mongoose.Schema({
     volume: { type: Number, min: 0 },
     typeVehicule:    [{ type: String, enum: ['moto','voiture','break','utilitaire','camionnette','camion','cargo','semi'] }],
     dateSouhaitee:   { type: Date, default: null },
+    urgent:          { type: Boolean, default: false },
     prixDemande: { type: Number, required: true, min: 100 },
     wilayaDepart: { type: String, required: true },
     villeDepart: { type: String, required: true },

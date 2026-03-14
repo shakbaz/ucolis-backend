@@ -95,14 +95,14 @@ router.post('/', auth, async (req, res) => {
   try {
     const {
       titre, description, poids, longueur, largeur, hauteur, volume,
-      prixDemande, typeVehicule, dateSouhaitee, wilayaDepart, villeDepart, adresseDepart, latDepart, lngDepart,
+      prixDemande, typeVehicule, dateSouhaitee, urgent, wilayaDepart, villeDepart, adresseDepart, latDepart, lngDepart,
       wilayaArrivee, villeArrivee, adresseArrivee, latArrivee, lngArrivee,
       distance, photos,
     } = req.body;
 
     const parcel = new Parcel({
       titre, description, poids, longueur, largeur, hauteur, volume,
-      prixDemande, typeVehicule: typeVehicule || [], dateSouhaitee: dateSouhaitee || null, wilayaDepart, villeDepart, adresseDepart,
+      prixDemande, typeVehicule: typeVehicule || [], dateSouhaitee: dateSouhaitee || null, urgent: urgent || false, wilayaDepart, villeDepart, adresseDepart,
       latDepart:   Number(latDepart),
       lngDepart:   Number(lngDepart),
       wilayaArrivee, villeArrivee, adresseArrivee,
