@@ -67,7 +67,7 @@ router.get('/:id', async (req, res) => {
 // ── PUT /users/profile — modifier infos profil ────────────────
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { prenom, nom, telephone, wilaya, ville, bio } = req.body;
+    const { prenom, nom, telephone, wilaya, ville, bio, role, typeCompte } = req.body;
 
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
@@ -78,6 +78,8 @@ router.put('/profile', auth, async (req, res) => {
     if (wilaya)              user.wilaya    = wilaya;
     if (ville !== undefined) user.ville     = ville;
     if (bio   !== undefined) user.bio       = bio.trim();
+    if (role)                user.role       = role;
+    if (typeCompte)          user.typeCompte = typeCompte;
 
     user.lastSeen = new Date();
     await user.save();
