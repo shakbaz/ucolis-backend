@@ -150,7 +150,7 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(400).json({ message: 'Ce colis ne peut plus être modifié' });
     }
 
-    const allowedFields = ['titre', 'description', 'poids', 'longueur', 'largeur', 'hauteur', 'volume', 'prixDemande', 'photos', 'typeVehicule', 'dateSouhaitee', 'urgent', 'wilayaDepart', 'villeDepart', 'adresseDepart', 'wilayaArrivee', 'villeArrivee', 'adresseArrivee'];
+    const allowedFields = ['titre', 'description', 'poids', 'longueur', 'largeur', 'hauteur', 'volume', 'prixDemande', 'photos', 'typeVehicule', 'dateSouhaitee', 'urgent', 'wilayaDepart', 'villeDepart', 'adresseDepart', 'latDepart', 'lngDepart', 'wilayaArrivee', 'villeArrivee', 'adresseArrivee', 'latArrivee', 'lngArrivee'];
     allowedFields.forEach(f => { if (req.body[f] !== undefined) parcel[f] = req.body[f]; });
 
     await parcel.save();
