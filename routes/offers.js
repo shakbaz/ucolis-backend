@@ -121,6 +121,13 @@ router.patch('/:id/accept', auth, async (req, res) => {
     offer.statut = OFFER_STATUS.ACCEPTE;
     await offer.save();
 
+    // Récupérer les autres offres AVANT de les refuser pour avoir les transporteurs
+    const otherOffers = await Offer.find({
+      colis: parcel._id,
+      _id: { $ne: offer._id },
+      statut: { $nin: [OFFER_STATUS.REFUSE, OFFER_STATUS.ANNULE] },
+    }).populate('transporteur', 'prenom nom expoPushToken');
+
     // Refuser les autres offres
     await Offer.updateMany(
       { colis: parcel._id, _id: { $ne: offer._id } },
@@ -156,6 +163,19 @@ router.patch('/:id/accept', auth, async (req, res) => {
         parcelId: parcel._id,
         offerId:  offer._id,
       });
+
+      // Notifier chaque transporteur refusé
+      for (const refused of otherOffers) {
+        if (!refused.transporteur?._id) continue;
+        await notify(io, {
+          destinataire: refused.transporteur._id,
+          type:    'offre_refusee',
+          titre:   '❌ Offre non retenue',
+          message: `L'expéditeur a choisi un autre transporteur pour le colis "${parcel.titre}".`,
+          parcelId: parcel._id,
+          offerId:  refused._id,
+        });
+      }
     } catch (_e) { /* ignore conversation error */ }
 
     res.json({ offer, parcel });
@@ -251,14 +271,18 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
     offer.prixPropose = offer.contreOffre.prix;
     await offer.save();
 
+    // Récupérer les autres offres actives AVANT de les refuser
+    const otherOffersCounter = await Offer.find({
+      colis: parcel._id,
+      _id: { $ne: offer._id },
+      statut: { $nin: [OFFER_STATUS.REFUSE, OFFER_STATUS.ANNULE] },
+    }).populate('transporteur', 'prenom nom expoPushToken');
+
     // Refuser les autres offres
     await Offer.updateMany(
       { colis: parcel._id, _id: { $ne: offer._id } },
       { $set: { statut: OFFER_STATUS.REFUSE } }
     );
-
-    // Mettre à jour le colis
-    parcel.statut              = PARCEL_STATUS.ACCEPTE;
     parcel.transporteurAccepte = offer.transporteur._id;
     parcel.prixFinal           = offer.contreOffre.prix;
     await parcel.save();
@@ -288,6 +312,19 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
       parcelId: parcel._id,
       offerId:  offer._id,
     });
+
+    // Notifier les autres transporteurs refusés
+    for (const refused of otherOffersCounter) {
+      if (!refused.transporteur?._id) continue;
+      await notify(io, {
+        destinataire: refused.transporteur._id,
+        type:    'offre_refusee',
+        titre:   '❌ Offre non retenue',
+        message: `L'expéditeur a choisi un autre transporteur pour le colis "${parcel.titre}".`,
+        parcelId: parcel._id,
+        offerId:  refused._id,
+      });
+    }
 
     res.json({ offer, parcel });
   } catch (error) {
