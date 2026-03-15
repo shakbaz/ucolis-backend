@@ -267,43 +267,74 @@ router.patch('/:id/status', auth, async (req, res) => {
 
       if (isTransporteurAccepte && !isExpediteur) {
         // ── Transporteur se désiste ───────────────────────────────
+        // Refuser l'offre du transporteur désistant
         await Offer.findOneAndUpdate(
           { colis: parcel._id, transporteur: req.user._id },
           { $set: { statut: OFFER_STATUS.REFUSE } }
         );
 
-        const autresOffres = await Offer.find({
-          colis:  parcel._id,
-          statut: OFFER_STATUS.EN_ATTENTE,
-        });
+        // ✅ Réactiver les offres des autres transporteurs qui avaient été refusées
+        // lors de l'acceptation initiale (sauf l'offre du désistant)
+        const offresReactivees = await Offer.find({
+          colis:       parcel._id,
+          transporteur:{ $ne: req.user._id },
+          statut:      OFFER_STATUS.REFUSE,
+        }).populate('transporteur', 'prenom nom');
 
-        if (autresOffres.length > 0) {
+        if (offresReactivees.length > 0) {
+          await Offer.updateMany(
+            {
+              colis:       parcel._id,
+              transporteur:{ $ne: req.user._id },
+              statut:      OFFER_STATUS.REFUSE,
+            },
+            { $set: { statut: OFFER_STATUS.EN_ATTENTE } }
+          );
+
+          // Notifier chaque transporteur réactivé
+          for (const offre of offresReactivees) {
+            if (!offre.transporteur?._id) continue;
+            await createNotification({
+              destinataire: offre.transporteur._id,
+              type:    'offre_acceptee',
+              titre:   '🔄 Votre offre est à nouveau active',
+              message: `Le transporteur précédent s'est désisté pour "${parcel.titre}". Votre offre est de nouveau disponible.`,
+              data:    { parcelId: parcel._id },
+            });
+            if (io) io.to(offre.transporteur._id.toString()).emit('parcel_status', { parcelId: parcel._id, statut: PARCEL_STATUS.EN_NEGOCIATION });
+          }
+
           parcel.statut              = PARCEL_STATUS.EN_NEGOCIATION;
           parcel.transporteurAccepte = null;
           parcel.prixFinal           = null;
           await parcel.save();
+
           await createNotification({
             destinataire: parcel.expediteur,
-            type: 'offre_refusee',
-            titre: '⚠️ Transporteur désisté',
+            type:    'offre_refusee',
+            titre:   '⚠️ Transporteur désisté',
             message: `Le transporteur s'est désisté pour "${parcel.titre}". D'autres offres sont disponibles.`,
-            data: { parcelId: parcel._id },
+            data:    { parcelId: parcel._id },
           });
           if (io) io.to(parcel.expediteur.toString()).emit('parcel_status', { parcelId: parcel._id, statut: parcel.statut });
+
         } else {
+          // Aucune autre offre → retour à disponible
           parcel.statut              = PARCEL_STATUS.DISPONIBLE;
           parcel.transporteurAccepte = null;
           parcel.prixFinal           = null;
           await parcel.save();
+
           await createNotification({
             destinataire: parcel.expediteur,
-            type: 'offre_refusee',
-            titre: '⚠️ Transporteur désisté',
+            type:    'offre_refusee',
+            titre:   '⚠️ Transporteur désisté',
             message: `Le transporteur s'est désisté pour "${parcel.titre}". Votre annonce est à nouveau disponible.`,
-            data: { parcelId: parcel._id },
+            data:    { parcelId: parcel._id },
           });
           if (io) io.to(parcel.expediteur.toString()).emit('parcel_status', { parcelId: parcel._id, statut: parcel.statut });
         }
+
         return res.json(parcel);
       }
 
