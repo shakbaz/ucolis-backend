@@ -55,8 +55,13 @@ router.post('/', auth, async (req, res) => {
 
     const parcel = await Parcel.findById(colisId).populate('expediteur', 'prenom nom');
     if (!parcel) return res.status(404).json({ message: 'Colis non trouvé' });
-    if (parcel.statut !== PARCEL_STATUS.DISPONIBLE) {
+    // Accepter DISPONIBLE et EN_NEGOCIATION, mais bloquer si un transporteur a déjà été accepté
+    const statutsAutorisés = [PARCEL_STATUS.DISPONIBLE, PARCEL_STATUS.EN_NEGOCIATION];
+    if (!statutsAutorisés.includes(parcel.statut)) {
       return res.status(400).json({ message: 'Ce colis n\'est plus disponible' });
+    }
+    if (parcel.transporteurAccepte) {
+      return res.status(400).json({ message: 'Un transporteur a déjà été sélectionné pour ce colis' });
     }
     if (parcel.expediteur._id.toString() === req.user._id.toString()) {
       return res.status(400).json({ message: 'Vous ne pouvez pas faire une offre sur votre propre colis' });
