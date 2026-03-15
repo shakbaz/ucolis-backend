@@ -7,6 +7,7 @@ const Offer      = require('../models/Offer');
 const auth       = require('../middleware/auth');
 const { uploadPhoto } = require('../middleware/upload');
 const { PARCEL_STATUS } = require('../models/Parcel');
+const { OFFER_STATUS }  = require('../models/Offer');
 const { uploadParcel, uploadToCloudinary } = require('../middleware/upload');
 const { createNotification } = require('../utils/notifHelper');
 const User = require('../models/User');
@@ -261,15 +262,60 @@ router.patch('/:id/status', auth, async (req, res) => {
     }
 
     if (statut === 'annule') {
+      const isTransporteurAccepte = parcel.transporteurAccepte?.toString() === req.user._id.toString();
       const isExpediteur = parcel.expediteur.toString() === req.user._id.toString();
-      const autreUserId  = isExpediteur ? parcel.transporteurAccepte : parcel.expediteur;
+
+      if (isTransporteurAccepte && !isExpediteur) {
+        // ── Transporteur se désiste ───────────────────────────────
+        await Offer.findOneAndUpdate(
+          { colis: parcel._id, transporteur: req.user._id },
+          { $set: { statut: OFFER_STATUS.REFUSE } }
+        );
+
+        const autresOffres = await Offer.find({
+          colis:  parcel._id,
+          statut: OFFER_STATUS.EN_ATTENTE,
+        });
+
+        if (autresOffres.length > 0) {
+          parcel.statut              = PARCEL_STATUS.EN_NEGOCIATION;
+          parcel.transporteurAccepte = null;
+          parcel.prixFinal           = null;
+          await parcel.save();
+          await createNotification({
+            destinataire: parcel.expediteur,
+            type: 'offre_refusee',
+            titre: '⚠️ Transporteur désisté',
+            message: `Le transporteur s'est désisté pour "${parcel.titre}". D'autres offres sont disponibles.`,
+            data: { parcelId: parcel._id },
+          });
+          if (io) io.to(parcel.expediteur.toString()).emit('parcel_status', { parcelId: parcel._id, statut: parcel.statut });
+        } else {
+          parcel.statut              = PARCEL_STATUS.DISPONIBLE;
+          parcel.transporteurAccepte = null;
+          parcel.prixFinal           = null;
+          await parcel.save();
+          await createNotification({
+            destinataire: parcel.expediteur,
+            type: 'offre_refusee',
+            titre: '⚠️ Transporteur désisté',
+            message: `Le transporteur s'est désisté pour "${parcel.titre}". Votre annonce est à nouveau disponible.`,
+            data: { parcelId: parcel._id },
+          });
+          if (io) io.to(parcel.expediteur.toString()).emit('parcel_status', { parcelId: parcel._id, statut: parcel.statut });
+        }
+        return res.json(parcel);
+      }
+
+      // ── Annulation par l'expéditeur → annulation définitive ────
+      const autreUserId = parcel.transporteurAccepte || null;
       if (autreUserId) {
         await createNotification({
           destinataire: autreUserId,
-          type:    'offre_refusee', // type générique pour annulation
-          titre:   '❌ Annonce annulée',
-          message: `L'annonce "${parcel.titre}" a été annulée`,
-          data:    { parcelId: parcel._id },
+          type: 'offre_refusee',
+          titre: '❌ Annonce annulée',
+          message: `L'annonce "${parcel.titre}" a été annulée par l'expéditeur.`,
+          data: { parcelId: parcel._id },
         });
         if (io) io.to(autreUserId.toString()).emit('parcel_status', { parcelId: parcel._id, statut });
       }
