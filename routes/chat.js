@@ -137,10 +137,10 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       },
     });
 
-    // Socket.io temps réel
+    // Socket.io temps réel — émettre seulement à l'autre participant
     const io = req.app.locals.io;
     if (io) {
-      io.to(req.params.id).emit('new_message', { message });
+      io.to(otherParticipant.toString()).emit('new_message', { message });
       io.to(otherParticipant.toString()).emit('new_notification');
     }
 
