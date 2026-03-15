@@ -88,9 +88,16 @@ io.on('connection', (socket) => {
     socket.leave(`tracking_${parcelId}`);
   });
   socket.on('carrier_location', ({ parcelId, lat, lng }) => {
-    io.to(`tracking_${parcelId}`).emit('carrier_position', {
-      lat, lng, timestamp: Date.now(),
-    });
+    // Sauvegarder la dernière position connue
+    if (!io._lastCarrierPos) io._lastCarrierPos = {};
+    io._lastCarrierPos[parcelId] = { lat, lng, timestamp: Date.now() };
+    io.to(`tracking_${parcelId}`).emit('carrier_position', { lat, lng, timestamp: Date.now() });
+  });
+
+  // Quand un expéditeur rejoint et demande la dernière position connue
+  socket.on('request_carrier_position', ({ parcelId }) => {
+    const last = io._lastCarrierPos?.[parcelId];
+    if (last) socket.emit('carrier_position', last);
   });
 });
 
