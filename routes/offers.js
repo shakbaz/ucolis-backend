@@ -283,6 +283,7 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
       { colis: parcel._id, _id: { $ne: offer._id } },
       { $set: { statut: OFFER_STATUS.REFUSE } }
     );
+    parcel.statut              = PARCEL_STATUS.ACCEPTE;
     parcel.transporteurAccepte = offer.transporteur._id;
     parcel.prixFinal           = offer.contreOffre.prix;
     await parcel.save();
