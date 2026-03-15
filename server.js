@@ -14,6 +14,7 @@ const offerRoutes    = require('./routes/offers');
 const chatRoutes     = require('./routes/chat');
 const userRoutes     = require('./routes/users');
 const notificationRoutes = require('./routes/notifications');
+const ratingRoutes        = require('./routes/ratings');
 const { ENDPOINTS }  = require('./utils/constants');
 
 const app = express();
@@ -60,6 +61,7 @@ app.use(ENDPOINTS.OFFERS,  offerRoutes);
 app.use(ENDPOINTS.CHAT,    chatRoutes);
 app.use(ENDPOINTS.USERS,   userRoutes);
 app.use(ENDPOINTS.NOTIFICATIONS, notificationRoutes);
+app.use('/api/ratings',           ratingRoutes);
 
 // Socket.io
 const io = socketIo(server, {

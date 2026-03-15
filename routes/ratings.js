@@ -24,40 +24,34 @@ router.post('/', auth, async (req, res) => {
     const parcel = await Parcel.findById(colisId);
     if (!parcel) return res.status(404).json({ message: 'Colis non trouvé' });
 
-    // Seuls les colis livrés peuvent être notés
     if (parcel.statut !== PARCEL_STATUS.LIVRE) {
       return res.status(400).json({ message: 'Ce colis n\'a pas encore été livré' });
     }
 
     const userId = req.user._id.toString();
-    const expediteurId     = parcel.expediteur.toString();
-    const transporteurId   = parcel.transporteurAccepte?.toString();
+    const expediteurId   = parcel.expediteur.toString();
+    const transporteurId = parcel.transporteurAccepte?.toString();
 
     if (!transporteurId) {
       return res.status(400).json({ message: 'Aucun transporteur associé à ce colis' });
     }
 
-    // Déterminer qui note qui
     let destinataireId, type;
     if (userId === expediteurId) {
-      // L'expéditeur note le transporteur
       destinataireId = transporteurId;
       type = 'expediteur';
     } else if (userId === transporteurId) {
-      // Le transporteur note l'expéditeur
       destinataireId = expediteurId;
       type = 'transporteur';
     } else {
       return res.status(403).json({ message: 'Vous n\'êtes pas concerné par ce colis' });
     }
 
-    // Vérifier si l'avis existe déjà
     const existing = await Review.findOne({ colis: colisId, auteur: req.user._id });
     if (existing) {
       return res.status(409).json({ message: 'Vous avez déjà noté ce colis' });
     }
 
-    // Créer l'avis
     const review = await Review.create({
       colis:        colisId,
       auteur:       req.user._id,
@@ -67,7 +61,6 @@ router.post('/', auth, async (req, res) => {
       type,
     });
 
-    // Mettre à jour la moyenne du destinataire
     const stats = await Review.aggregate([
       { $match: { destinataire: review.destinataire } },
       { $group: { _id: null, moyenne: { $avg: '$note' }, total: { $sum: 1 } } },
@@ -89,7 +82,7 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// ── GET /ratings/check/:colisId — Vérifier si l'utilisateur a déjà noté ──
+// ── GET /ratings/check/:colisId — Vérifier si déjà noté ──────────────────
 router.get('/check/:colisId', auth, async (req, res) => {
   try {
     const existing = await Review.findOne({
