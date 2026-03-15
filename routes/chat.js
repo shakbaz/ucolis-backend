@@ -137,10 +137,12 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       },
     });
 
-    // Socket.io temps réel — émettre seulement à l'autre participant
+    // Socket.io — émettre vers la room de la conversation pour le récepteur
     const io = req.app.locals.io;
     if (io) {
-      io.to(otherParticipant.toString()).emit('new_message', { message });
+      // Émettre vers la room conversation (rejointe par les deux participants)
+      // L'expéditeur filtre côté client pour éviter le doublon
+      io.to(req.params.id).emit('new_message', { message });
       io.to(otherParticipant.toString()).emit('new_notification');
     }
 
