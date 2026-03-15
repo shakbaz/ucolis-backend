@@ -63,6 +63,7 @@ router.post('/', auth, async (req, res) => {
     if (parcel.transporteurAccepte) {
       return res.status(400).json({ message: 'Un transporteur a déjà été sélectionné pour ce colis' });
     }
+
     if (parcel.expediteur._id.toString() === req.user._id.toString()) {
       return res.status(400).json({ message: 'Vous ne pouvez pas faire une offre sur votre propre colis' });
     }
