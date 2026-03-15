@@ -123,26 +123,21 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       $inc: { 'unreadCount.$[elem].count': 1 },
     }, { arrayFilters: [{ 'elem.user': otherParticipant }] });
 
-    // Socket.io — émettre le message
     const io = req.app.locals.io;
-    if (io) {
-      io.to(req.params.id).emit('new_message', { message });
-    }
 
-    // Vérifier si l'autre est actuellement dans la room (discussion ouverte)
+    // ✅ Vérifier si l'autre a la discussion ouverte (est dans la room)
     let otherIsInRoom = false;
     if (io) {
       try {
         const sockets = await io.in(req.params.id).fetchSockets();
-        // Chercher un socket de l'autre participant dans cette room
-        otherIsInRoom = sockets.some(s => {
-          // Le socket rejoint aussi sa room userId personnelle
-          return s.rooms.has(req.params.id) && !s.rooms.has(req.user._id.toString());
-        });
+        otherIsInRoom = sockets.length > 1; // > 1 car l'expéditeur est aussi dans la room
       } catch (_) {}
     }
 
-    // Notifier SEULEMENT si l'autre n'a pas la discussion ouverte
+    // Émettre le message à toute la room
+    if (io) io.to(req.params.id).emit('new_message', { message });
+
+    // Notifier uniquement si l'autre n'a PAS la discussion ouverte
     if (!otherIsInRoom) {
       const senderName = `${req.user.prenom} ${req.user.nom}`;
       await createNotification({
@@ -150,10 +145,7 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
         type:    'nouveau_message',
         titre:   `💬 Message de ${senderName}`,
         message: `${contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu}`,
-        data:    {
-          conversationId: req.params.id,
-          parcelId:       conversation.colis?._id,
-        },
+        data:    { conversationId: req.params.id, parcelId: conversation.colis?._id },
       });
       if (io) io.to(otherParticipant.toString()).emit('new_notification');
     }
