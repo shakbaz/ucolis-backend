@@ -7,6 +7,7 @@ const PARCEL_STATUS = {
     EN_NEGOCIATION: 'en_negociation',
     ACCEPTE: 'accepte',
     EN_LIVRAISON: 'en_livraison',
+    EN_ATTENTE_VALIDATION: 'en_attente_validation',
     LIVRE: 'livre',
     ANNULE: 'annule',
 };

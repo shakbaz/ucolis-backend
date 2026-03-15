@@ -22,8 +22,9 @@ const router = express.Router();
 //  tout statut   → annule          (expéditeur OU transporteur accepté)
 //
 const TRANSITIONS = {
-  accepte:      ['en_livraison', 'annule'],
-  en_livraison: ['livre',        'annule'],
+  accepte:               ['en_livraison',          'annule'],
+  en_livraison:          ['en_attente_validation',  'annule'],
+  en_attente_validation: ['livre',                  'annule'],
 };
 
 // Qui peut déclencher quelle transition
@@ -31,9 +32,10 @@ function canChangeStatus(parcel, userId, newStatut) {
   const isExpediteur  = parcel.expediteur.toString()         === userId.toString();
   const isTransporteur = parcel.transporteurAccepte?.toString() === userId.toString();
 
-  if (newStatut === 'annule')       return isExpediteur || isTransporteur;
-  if (newStatut === 'en_livraison') return isTransporteur;
-  if (newStatut === 'livre')        return isTransporteur;
+  if (newStatut === 'annule')                return isExpediteur || isTransporteur;
+  if (newStatut === 'en_livraison')          return isTransporteur;
+  if (newStatut === 'en_attente_validation') return isTransporteur;
+  if (newStatut === 'livre')                 return isExpediteur; // expéditeur valide
   return false;
 }
 
@@ -199,12 +201,24 @@ router.patch('/:id/status', auth, async (req, res) => {
 
     const oldStatut = parcel.statut;
     parcel.statut = statut;
-    if (statut === PARCEL_STATUS.LIVRE) parcel.dateLivraison = new Date();
+    if (statut === 'livre') parcel.dateLivraison = new Date();
     await parcel.save();
 
     const io = req.app.locals.io;
 
     // ✅ Notifications selon la transition
+    if (statut === 'en_attente_validation') {
+      // Notifier l'expéditeur → lui demander de valider la livraison
+      await createNotification({
+        destinataire: parcel.expediteur,
+        type:    'colis_livre',
+        titre:   '📦 Livraison effectuée',
+        message: `Le transporteur indique avoir livré "${parcel.titre}". Confirmez la réception !`,
+        data:    { parcelId: parcel._id },
+      });
+      if (io) io.to(parcel.expediteur.toString()).emit('parcel_status', { parcelId: parcel._id, statut });
+    }
+
     if (statut === 'en_livraison') {
       // Notifier l'expéditeur
       await createNotification({
