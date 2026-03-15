@@ -143,15 +143,19 @@ router.patch('/:id/accept', auth, async (req, res) => {
     // Créer conversation automatiquement
     try {
       const Conversation = require('../models/Conversation');
+      // ✅ Chercher conversation existante entre ces deux users (peu importe le colis)
       let conv = await Conversation.findOne({
         participants: { $all: [parcel.expediteur._id, offer.transporteur._id], $size: 2 },
-        colis: parcel._id,
       });
       if (!conv) {
         conv = await Conversation.create({
           participants: [parcel.expediteur._id, offer.transporteur._id],
           colis: parcel._id,
         });
+      } else {
+        // Mettre à jour la référence au colis le plus récent
+        conv.colis = parcel._id;
+        await conv.save();
       }
       // Notifier avec conversationId
       const io = req.app.locals.io;
@@ -291,15 +295,18 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
     // Créer conversation
     try {
       const Conversation = require('../models/Conversation');
+      // ✅ Réutiliser la conversation existante entre ces deux users
       let conv = await Conversation.findOne({
         participants: { $all: [parcel.expediteur._id, offer.transporteur._id], $size: 2 },
-        colis: parcel._id,
       });
       if (!conv) {
         conv = await Conversation.create({
           participants: [parcel.expediteur._id, offer.transporteur._id],
           colis: parcel._id,
         });
+      } else {
+        conv.colis = parcel._id;
+        await conv.save();
       }
     } catch (_e) { /* ignore */ }
 
