@@ -123,32 +123,76 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       $inc: { 'unreadCount.$[elem].count': 1 },
     }, { arrayFilters: [{ 'elem.user': otherParticipant }] });
 
-    // ✅ Notification persistée en base
-    const senderName = `${req.user.prenom} ${req.user.nom}`;
-    const parcelTitre = conversation.colis?.titre || 'une livraison';
-    await createNotification({
-      destinataire: otherParticipant,
-      type:    'nouveau_message',
-      titre:   `💬 Message de ${senderName}`,
-      message: `${contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu}`,
-      data:    {
-        conversationId: req.params.id,
-        parcelId:       conversation.colis?._id,
-      },
-    });
-
-    // Socket.io — émettre vers la room de la conversation pour le récepteur
+    // Socket.io — émettre le message
     const io = req.app.locals.io;
     if (io) {
-      // Émettre vers la room conversation (rejointe par les deux participants)
-      // L'expéditeur filtre côté client pour éviter le doublon
       io.to(req.params.id).emit('new_message', { message });
-      io.to(otherParticipant.toString()).emit('new_notification');
+    }
+
+    // Vérifier si l'autre est actuellement dans la room (discussion ouverte)
+    let otherIsInRoom = false;
+    if (io) {
+      try {
+        const sockets = await io.in(req.params.id).fetchSockets();
+        // Chercher un socket de l'autre participant dans cette room
+        otherIsInRoom = sockets.some(s => {
+          // Le socket rejoint aussi sa room userId personnelle
+          return s.rooms.has(req.params.id) && !s.rooms.has(req.user._id.toString());
+        });
+      } catch (_) {}
+    }
+
+    // Notifier SEULEMENT si l'autre n'a pas la discussion ouverte
+    if (!otherIsInRoom) {
+      const senderName = `${req.user.prenom} ${req.user.nom}`;
+      await createNotification({
+        destinataire: otherParticipant,
+        type:    'nouveau_message',
+        titre:   `💬 Message de ${senderName}`,
+        message: `${contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu}`,
+        data:    {
+          conversationId: req.params.id,
+          parcelId:       conversation.colis?._id,
+        },
+      });
+      if (io) io.to(otherParticipant.toString()).emit('new_notification');
     }
 
     res.status(201).json(message);
   } catch (error) {
     res.status(400).json({ message: error.message });
+  }
+});
+
+
+// PATCH marquer les messages comme lus — temps réel
+router.patch('/conversations/:id/read', auth, async (req, res) => {
+  try {
+    // Marquer tous les messages non lus par moi comme lus
+    await Message.updateMany(
+      { conversation: req.params.id, luPar: { $ne: req.user._id } },
+      { $addToSet: { luPar: req.user._id } }
+    );
+
+    // Reset unread count
+    await Conversation.findByIdAndUpdate(req.params.id, {
+      $set: { 'unreadCount.$[elem].count': 0 },
+    }, { arrayFilters: [{ 'elem.user': req.user._id }] });
+
+    // Notifier l'autre participant en temps réel
+    const conv = await Conversation.findById(req.params.id);
+    const other = conv?.participants?.find(p => p.toString() !== req.user._id.toString());
+    const io = req.app.locals.io;
+    if (io && other) {
+      io.to(req.params.id).emit('messages_read', {
+        conversationId: req.params.id,
+        readBy: req.user._id,
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
