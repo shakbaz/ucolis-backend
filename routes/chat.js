@@ -125,20 +125,22 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
 
     const io = req.app.locals.io;
 
-    // ✅ Vérifier si l'autre a la discussion ouverte (est dans la room)
-    let otherIsInRoom = false;
-    if (io) {
-      try {
-        const sockets = await io.in(req.params.id).fetchSockets();
-        otherIsInRoom = sockets.length > 1; // > 1 car l'expéditeur est aussi dans la room
-      } catch (_) {}
-    }
-
     // Émettre le message à toute la room
     if (io) io.to(req.params.id).emit('new_message', { message });
 
+    // ✅ Vérifier si l'autre a la DISCUSSION ouverte (dans la room de la conversation)
+    // La room conversationId est rejointe SEULEMENT quand ChatScreen est ouvert
+    let otherIsInConversation = false;
+    if (io) {
+      try {
+        const sockets = await io.in(req.params.id).fetchSockets();
+        // Si > 1 socket dans la room conversation → l'autre a la discussion ouverte
+        otherIsInConversation = sockets.length > 1;
+      } catch (_) {}
+    }
+
     // Notifier uniquement si l'autre n'a PAS la discussion ouverte
-    if (!otherIsInRoom) {
+    if (!otherIsInConversation) {
       const senderName = `${req.user.prenom} ${req.user.nom}`;
       await createNotification({
         destinataire: otherParticipant,

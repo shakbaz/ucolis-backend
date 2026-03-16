@@ -79,6 +79,11 @@ mongoose.connect(process.env.MONGODB_URI)
 
 // Socket handlers
 io.on('connection', (socket) => {
+  // ✅ Chaque user rejoint sa room personnelle (userId) pour les notifications ciblées
+  socket.on('join_user', (userId) => {
+    if (userId) socket.join(userId);
+  });
+
   socket.on('join_conversation', (conversationId) => {
     socket.join(conversationId);
   });
