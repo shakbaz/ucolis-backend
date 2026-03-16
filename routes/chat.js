@@ -148,13 +148,34 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
     // Notifier uniquement si l'autre n'a PAS la discussion ouverte
     if (!otherIsInConversation) {
       const senderName = `${req.user.prenom} ${req.user.nom}`;
-      await createNotification({
+      const Notification = require('../models/Notification');
+      const previewContenu = contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu;
+
+      // ✅ Upsert : mettre à jour la notif existante non lue pour cette conversation
+      // plutôt que créer une nouvelle à chaque message
+      const existingNotif = await Notification.findOne({
         destinataire: otherParticipant,
-        type:    'nouveau_message',
-        titre:   `💬 Message de ${senderName}`,
-        message: `${contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu}`,
-        data:    { conversationId: req.params.id, parcelId: conversation.colis?._id },
+        type:         'nouveau_message',
+        lu:           false,
+        'data.conversationId': req.params.id,
       });
+
+      if (existingNotif) {
+        // Mettre à jour le contenu et la date
+        existingNotif.message   = previewContenu;
+        existingNotif.titre     = `💬 ${senderName}`;
+        existingNotif.updatedAt = new Date();
+        await existingNotif.save();
+      } else {
+        await createNotification({
+          destinataire: otherParticipant,
+          type:    'nouveau_message',
+          titre:   `💬 ${senderName}`,
+          message: previewContenu,
+          data:    { conversationId: req.params.id, parcelId: conversation.colis?._id },
+        });
+      }
+
       if (io) io.to(otherParticipant.toString()).emit('new_notification');
     }
 
