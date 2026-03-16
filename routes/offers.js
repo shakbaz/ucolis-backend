@@ -151,10 +151,20 @@ router.patch('/:id/accept', auth, async (req, res) => {
         conv = await Conversation.create({
           participants: [parcel.expediteur._id, offer.transporteur._id],
           colis: parcel._id,
+          unreadCount: [
+            { user: parcel.expediteur._id,   count: 0 },
+            { user: offer.transporteur._id,  count: 0 },
+          ],
         });
       } else {
-        // Mettre à jour la référence au colis le plus récent
         conv.colis = parcel._id;
+        // S'assurer que unreadCount existe pour les deux participants
+        if (!conv.unreadCount || conv.unreadCount.length < 2) {
+          conv.unreadCount = [
+            { user: parcel.expediteur._id,  count: 0 },
+            { user: offer.transporteur._id, count: 0 },
+          ];
+        }
         await conv.save();
       }
       // Notifier avec conversationId
@@ -303,9 +313,19 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
         conv = await Conversation.create({
           participants: [parcel.expediteur._id, offer.transporteur._id],
           colis: parcel._id,
+          unreadCount: [
+            { user: parcel.expediteur._id,  count: 0 },
+            { user: offer.transporteur._id, count: 0 },
+          ],
         });
       } else {
         conv.colis = parcel._id;
+        if (!conv.unreadCount || conv.unreadCount.length < 2) {
+          conv.unreadCount = [
+            { user: parcel.expediteur._id,  count: 0 },
+            { user: offer.transporteur._id, count: 0 },
+          ];
+        }
         await conv.save();
       }
     } catch (_e) { /* ignore */ }

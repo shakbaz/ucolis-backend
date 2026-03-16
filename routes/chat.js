@@ -117,9 +117,15 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       p => p.toString() !== req.user._id.toString()
     );
 
-    // Mettre à jour la conversation
+    // S'assurer que unreadCount existe pour l'autre participant
     await Conversation.findByIdAndUpdate(req.params.id, {
       $set: { dernierMessage: message._id, updatedAt: new Date() },
+      $addToSet: {
+        unreadCount: { user: otherParticipant, count: 0 },
+      },
+    });
+    // Incrémenter le compteur
+    await Conversation.findByIdAndUpdate(req.params.id, {
       $inc: { 'unreadCount.$[elem].count': 1 },
     }, { arrayFilters: [{ 'elem.user': otherParticipant }] });
 
