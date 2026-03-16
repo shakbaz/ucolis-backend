@@ -145,14 +145,12 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       } catch (_) {}
     }
 
-    // Notifier uniquement si l'autre n'a PAS la discussion ouverte
+    // Créer notif DB uniquement si l'autre n'a PAS la discussion ouverte
     if (!otherIsInConversation) {
       const senderName = `${req.user.prenom} ${req.user.nom}`;
       const Notification = require('../models/Notification');
       const previewContenu = contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu;
 
-      // ✅ Upsert : mettre à jour la notif existante non lue pour cette conversation
-      // plutôt que créer une nouvelle à chaque message
       const existingNotif = await Notification.findOne({
         destinataire: otherParticipant,
         type:         'nouveau_message',
@@ -161,7 +159,6 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       });
 
       if (existingNotif) {
-        // Mettre à jour le contenu et la date
         existingNotif.message   = previewContenu;
         existingNotif.titre     = `💬 ${senderName}`;
         existingNotif.updatedAt = new Date();
@@ -175,9 +172,10 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
           data:    { conversationId: req.params.id, parcelId: conversation.colis?._id },
         });
       }
-
-      if (io) io.to(otherParticipant.toString()).emit('new_notification');
     }
+
+    // ✅ Toujours émettre new_notification pour mettre à jour le badge en temps réel
+    if (io) io.to(otherParticipant.toString()).emit('new_notification');
 
     res.status(201).json(message);
   } catch (error) {
