@@ -204,8 +204,15 @@ router.patch('/conversations/:id/read', auth, async (req, res) => {
     const conv = await Conversation.findById(req.params.id);
     const other = conv?.participants?.find(p => p.toString() !== req.user._id.toString());
     const io = req.app.locals.io;
-    if (io && other) {
+    if (io) {
+      // Émettre vers la room conversation (pour ChatScreen de l'expéditeur)
       io.to(req.params.id).emit('messages_read', {
+        conversationId: req.params.id,
+        readBy: req.user._id,
+      });
+      // ✅ Émettre aussi vers la room userId du lecteur
+      // pour que ConversationsScreen mette à jour le badge sans rechargement
+      io.to(req.user._id.toString()).emit('messages_read', {
         conversationId: req.params.id,
         readBy: req.user._id,
       });
