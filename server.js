@@ -171,12 +171,17 @@ app.locals.io = io;
 
 // Ping anti-sleep pour Render free tier (sleep après 15 min d'inactivité)
 if (process.env.RENDER_EXTERNAL_URL) {
+  console.log(`🔄 Self-ping actif sur ${process.env.RENDER_EXTERNAL_URL} toutes les 14 min`);
   setInterval(() => {
     try {
       const https = require('https');
-      https.get(`${process.env.RENDER_EXTERNAL_URL}/api/health`, () => {});
+      https.get(`${process.env.RENDER_EXTERNAL_URL}/api/health`, (res) => {
+        console.log(`🔄 Self-ping → status ${res.statusCode}`);
+      }).on('error', (err) => console.warn('🔴 Self-ping erreur:', err.message));
     } catch (_e) {}
   }, 14 * 60 * 1000);
+} else {
+  console.log('⚠️ RENDER_EXTERNAL_URL non défini — self-ping désactivé');
 }
 
 const PORT = process.env.PORT || 3001;
