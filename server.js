@@ -127,6 +127,16 @@ io.on('connection', (socket) => {
     socket.leave(conversationId);
   });
 
+  // ✅ Marque une conversation comme lue via socket (rapide, instantané)
+  // Émet messages_read sans attendre la persistance DB. Le HTTP PATCH /read
+  // côté client s'occupe de la persistance.
+  socket.on('mark_conversation_read', ({ conversationId }) => {
+    const userId = socket.data.user?.userId?.toString();
+    if (!userId || !conversationId) return;
+    io.to(conversationId).emit('messages_read', { conversationId, readBy: userId });
+    io.to(userId).emit('messages_read', { conversationId, readBy: userId });
+  });
+
   socket.on('typing', ({ conversationId, userId }) => {
     socket.to(conversationId).emit('typing', { conversationId, userId });
   });
