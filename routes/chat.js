@@ -145,8 +145,31 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       } catch (_) {}
     }
 
-    // Créer notif DB uniquement si l'autre n'a PAS la discussion ouverte
-    if (!otherIsInConversation) {
+    // ✅ Si le destinataire a la discussion ouverte → marquer auto comme lu
+    //    et émettre messages_read en temps réel pour passer "Distribué" → "Lu"
+    if (otherIsInConversation) {
+      await Message.updateOne(
+        { _id: message._id },
+        { $addToSet: { luPar: otherParticipant } }
+      );
+      await Conversation.findByIdAndUpdate(req.params.id, {
+        $set: { 'unreadCount.$[elem].count': 0 },
+      }, { arrayFilters: [{ 'elem.user': otherParticipant }] });
+
+      if (io) {
+        // Émettre vers la room conversation (ChatScreen de l'expéditeur)
+        io.to(req.params.id).emit('messages_read', {
+          conversationId: req.params.id,
+          readBy: otherParticipant,
+        });
+        // Émettre vers la room user du lecteur (badge + ConversationsScreen)
+        io.to(otherParticipant.toString()).emit('messages_read', {
+          conversationId: req.params.id,
+          readBy: otherParticipant,
+        });
+      }
+    } else {
+      // Créer notif DB uniquement si l'autre n'a PAS la discussion ouverte
       const senderName = `${req.user.prenom} ${req.user.nom}`;
       const Notification = require('../models/Notification');
       const previewContenu = contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu;
@@ -172,10 +195,11 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
           data:    { conversationId: req.params.id, parcelId: conversation.colis?._id },
         });
       }
-    }
 
-    // ✅ Toujours émettre new_notification pour mettre à jour le badge en temps réel
-    if (io) io.to(otherParticipant.toString()).emit('new_notification');
+      // Émettre new_notification UNIQUEMENT si l'autre n'est pas dans la conv
+      // (sinon le badge clignote brièvement avant le reset)
+      if (io) io.to(otherParticipant.toString()).emit('new_notification', { conversationId: req.params.id });
+    }
 
     res.status(201).json(message);
   } catch (error) {
