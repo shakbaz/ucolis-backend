@@ -122,6 +122,11 @@ io.on('connection', (socket) => {
   socket.on('join_conversation', (conversationId) => {
     socket.join(conversationId);
   });
+
+  socket.on('typing', ({ conversationId, userId }) => {
+    socket.to(conversationId).emit('typing', { conversationId, userId });
+  });
+
   socket.on('send_message', ({ conversationId, message }) => {
     io.to(conversationId).emit('new_message', { message, senderId: socket.id });
   });
