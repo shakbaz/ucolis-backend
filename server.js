@@ -133,8 +133,9 @@ io.on('connection', (socket) => {
   socket.on('mark_conversation_read', ({ conversationId }) => {
     const userId = socket.data.user?.userId?.toString();
     if (!userId || !conversationId) return;
-    io.to(conversationId).emit('messages_read', { conversationId, readBy: userId });
-    io.to(userId).emit('messages_read', { conversationId, readBy: userId });
+    const readAt = new Date().toISOString();
+    io.to(conversationId).emit('messages_read', { conversationId, readBy: userId, readAt });
+    io.to(userId).emit('messages_read', { conversationId, readBy: userId, readAt });
   });
 
   socket.on('typing', ({ conversationId, userId }) => {

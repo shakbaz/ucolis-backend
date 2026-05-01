@@ -178,15 +178,18 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       }, { arrayFilters: [{ 'elem.user': otherParticipant }] });
 
       if (io) {
+        const readAt = new Date().toISOString();
         // Émettre vers la room conversation (ChatScreen de l'expéditeur)
         io.to(req.params.id).emit('messages_read', {
           conversationId: req.params.id,
           readBy: otherParticipant,
+          readAt,
         });
         // Émettre vers la room user du lecteur (badge + ConversationsScreen)
         io.to(otherParticipant.toString()).emit('messages_read', {
           conversationId: req.params.id,
           readBy: otherParticipant,
+          readAt,
         });
       }
     } else {
@@ -249,15 +252,18 @@ router.patch('/conversations/:id/read', auth, async (req, res) => {
     const io = req.app.locals.io;
     if (io) {
       // Émettre vers la room conversation (pour ChatScreen de l'expéditeur)
+      const readAt = new Date().toISOString();
       io.to(req.params.id).emit('messages_read', {
         conversationId: req.params.id,
         readBy: req.user._id,
+        readAt,
       });
       // ✅ Émettre aussi vers la room userId du lecteur
       // pour que ConversationsScreen mette à jour le badge sans rechargement
       io.to(req.user._id.toString()).emit('messages_read', {
         conversationId: req.params.id,
         readBy: req.user._id,
+        readAt,
       });
     }
 
