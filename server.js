@@ -123,6 +123,10 @@ io.on('connection', (socket) => {
     socket.join(conversationId);
   });
 
+  socket.on('leave_conversation', (conversationId) => {
+    socket.leave(conversationId);
+  });
+
   socket.on('typing', ({ conversationId, userId }) => {
     socket.to(conversationId).emit('typing', { conversationId, userId });
   });

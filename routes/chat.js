@@ -151,14 +151,18 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
     // Émettre le message à toute la room
     if (io) io.to(req.params.id).emit('new_message', { message });
 
-    // ✅ Vérifier si l'autre a la DISCUSSION ouverte (dans la room de la conversation)
-    // La room conversationId est rejointe SEULEMENT quand ChatScreen est ouvert
+    // ✅ Vérifier si l'AUTRE participant est actuellement dans la room conversation
+    // (ChatScreen ouvert chez lui). On vérifie l'identité réelle des sockets, pas
+    // simplement la taille de la room — un socket fantôme du sender ne doit pas
+    // faussement déclencher l'auto-mark-as-read.
     let otherIsInConversation = false;
     if (io) {
       try {
         const sockets = await io.in(req.params.id).fetchSockets();
-        // Si > 1 socket dans la room conversation → l'autre a la discussion ouverte
-        otherIsInConversation = sockets.length > 1;
+        const otherIdStr = otherParticipant.toString();
+        otherIsInConversation = sockets.some(
+          s => s.data?.user?.userId?.toString() === otherIdStr
+        );
       } catch (_) {}
     }
 
