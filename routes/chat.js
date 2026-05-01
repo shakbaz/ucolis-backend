@@ -48,6 +48,23 @@ router.post('/conversations', auth, async (req, res) => {
   }
 });
 
+// GET une conversation par son ID
+router.get('/conversations/:id', auth, async (req, res) => {
+  try {
+    const conversation = await Conversation.findOne({
+      _id:          req.params.id,
+      participants: req.user._id,
+    })
+      .populate('participants', 'prenom nom photoProfil')
+      .populate('colis', 'titre statut')
+      .populate('dernierMessage');
+    if (!conversation) return res.status(404).json({ message: 'Conversation non trouvée' });
+    res.json(conversation);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
 // GET messages d'une conversation — retourne { messages, total, page }
 router.get('/conversations/:id/messages', auth, async (req, res) => {
   try {
