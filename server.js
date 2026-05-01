@@ -169,14 +169,14 @@ io.on('connection', (socket) => {
 
 app.locals.io = io;
 
-// Ping anti-sleep pour Render free tier
+// Ping anti-sleep pour Render free tier (sleep après 15 min d'inactivité)
 if (process.env.RENDER_EXTERNAL_URL) {
   setInterval(() => {
     try {
       const https = require('https');
       https.get(`${process.env.RENDER_EXTERNAL_URL}/api/health`, () => {});
     } catch (_e) {}
-  }, 10 * 60 * 1000);
+  }, 14 * 60 * 1000);
 }
 
 const PORT = process.env.PORT || 3001;
