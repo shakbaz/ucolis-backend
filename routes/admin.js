@@ -12,6 +12,10 @@ const Message       = require('../models/Message');
 
 const router = express.Router();
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ════════════════════════════════════════════════════
 // DASHBOARD — statistiques globales
 // GET /admin/stats
@@ -75,12 +79,15 @@ router.get('/users', adminAuth, async (req, res) => {
     const skip   = (Number(page) - 1) * Number(limit);
 
     const filter = { isAdmin: false };
-    if (search)    filter.$or = [
-      { prenom:    { $regex: search, $options: 'i' } },
-      { nom:       { $regex: search, $options: 'i' } },
-      { email:     { $regex: search, $options: 'i' } },
-      { telephone: { $regex: search, $options: 'i' } },
-    ];
+    if (search) {
+      const s = escapeRegex(String(search).slice(0, 100));
+      filter.$or = [
+        { prenom:    { $regex: s, $options: 'i' } },
+        { nom:       { $regex: s, $options: 'i' } },
+        { email:     { $regex: s, $options: 'i' } },
+        { telephone: { $regex: s, $options: 'i' } },
+      ];
+    }
     if (role)      filter.role    = role;
     if (actif !== '') filter.isActif = actif === 'true';
 
@@ -254,11 +261,14 @@ router.get('/parcels', adminAuth, async (req, res) => {
 
     const filter = {};
     if (statut) filter.statut = statut;
-    if (search) filter.$or = [
-      { titre:        { $regex: search, $options: 'i' } },
-      { villeDepart:  { $regex: search, $options: 'i' } },
-      { villeArrivee: { $regex: search, $options: 'i' } },
-    ];
+    if (search) {
+      const s = escapeRegex(String(search).slice(0, 100));
+      filter.$or = [
+        { titre:        { $regex: s, $options: 'i' } },
+        { villeDepart:  { $regex: s, $options: 'i' } },
+        { villeArrivee: { $regex: s, $options: 'i' } },
+      ];
+    }
 
     const [parcels, total] = await Promise.all([
       Parcel.find(filter)

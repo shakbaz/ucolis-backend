@@ -7,6 +7,7 @@ const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
 const http       = require('http');
 const socketIo   = require('socket.io');
+const jwt        = require('jsonwebtoken');
 
 const authRoutes     = require('./routes/auth');
 const parcelRoutes   = require('./routes/parcels');
@@ -25,9 +26,15 @@ const server = http.createServer(app);
 // ✅ OBLIGATOIRE sur Render/Railway/Heroku — doit être EN PREMIER
 app.set('trust proxy', 1);
 
+const ALLOWED_ORIGINS = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',').map(s => s.trim())
+  : null;
+
 app.use(helmet());
 app.use(cors({
-  origin: '*',
+  origin: ALLOWED_ORIGINS
+    ? (origin, cb) => (!origin || ALLOWED_ORIGINS.includes(origin) ? cb(null, true) : cb(new Error('CORS: origine non autorisée')))
+    : '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false,
@@ -37,7 +44,7 @@ app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting
+// Rate limiting global
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -45,6 +52,15 @@ const limiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 app.use(limiter);
+
+// Rate limiting strict pour les routes d'authentification (anti brute-force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessfulRequests: true,
+  message: { error: 'Trop de tentatives. Réessayez dans 15 minutes.' },
+  validate: { xForwardedForHeader: false },
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -57,7 +73,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Routes
-app.use(ENDPOINTS.AUTH,    authRoutes);
+app.use(ENDPOINTS.AUTH,    authLimiter, authRoutes);
 app.use(ENDPOINTS.PARCELS, parcelRoutes);
 app.use(ENDPOINTS.OFFERS,  offerRoutes);
 app.use(ENDPOINTS.CHAT,    chatRoutes);
@@ -69,7 +85,22 @@ app.use('/api/reports',           reportRoutes);
 
 // Socket.io
 const io = socketIo(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  cors: {
+    origin: ALLOWED_ORIGINS || '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+// Middleware Socket.IO — vérification JWT obligatoire
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(new Error('Non autorisé'));
+  try {
+    socket.data.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    next(new Error('Token invalide'));
+  }
 });
 
 // MongoDB
@@ -79,9 +110,13 @@ mongoose.connect(process.env.MONGODB_URI)
 
 // Socket handlers
 io.on('connection', (socket) => {
-  // ✅ Chaque user rejoint sa room personnelle (userId) pour les notifications ciblées
+  const socketUserId = socket.data.user?.userId?.toString();
+
+  // Un utilisateur ne peut rejoindre que sa propre room
   socket.on('join_user', (userId) => {
-    if (userId) socket.join(userId);
+    if (userId && userId.toString() === socketUserId) {
+      socket.join(userId);
+    }
   });
 
   socket.on('join_conversation', (conversationId) => {

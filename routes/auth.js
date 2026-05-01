@@ -23,10 +23,7 @@ router.post(ENDPOINTS.LOGIN, async (req, res) => {
       .select('+motDePasse');
 
     if (!user) {
-      return res.status(401).json({
-        message: 'Aucun compte associé à cet email',
-        code:    'EMAIL_NOT_FOUND',
-      });
+      return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
     }
 
     if (!user.isActif) {
@@ -38,10 +35,7 @@ router.post(ENDPOINTS.LOGIN, async (req, res) => {
 
     const isMatch = await user.comparePassword(motDePasse);
     if (!isMatch) {
-      return res.status(401).json({
-        message: 'Mot de passe incorrect',
-        code:    'WRONG_PASSWORD',
-      });
+      return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
     }
 
     const token = user.generateToken();
@@ -53,7 +47,7 @@ router.post(ENDPOINTS.LOGIN, async (req, res) => {
     res.json({ token, user });
   } catch (error) {
     console.error('❌ Login error:', error.message);
-    res.status(500).json({ message: 'Erreur serveur', detail: error.message });
+    res.status(500).json({ message: 'Erreur serveur' });
   }
 });
 

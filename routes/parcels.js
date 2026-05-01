@@ -14,6 +14,12 @@ const User = require('../models/User');
 
 const router = express.Router();
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const VALID_STATUTS = Object.values(PARCEL_STATUS);
+
 // ── Transitions autorisées ──────────────────────────────────────────────────
 //
 //  disponible    → en_negociation  (auto, 1ère offre reçue — géré dans offers.js)
@@ -51,17 +57,18 @@ router.get('/', async (req, res) => {
 
     const filter = {};
     if (wilaya)     filter.$or = [{ wilayaDepart: wilaya }, { wilayaArrivee: wilaya }];
-    if (statut)     filter.statut = statut;
+    if (statut && VALID_STATUTS.includes(statut)) filter.statut = statut;
     if (poidsMax)   filter.poids = { $lte: Number(poidsMax) };
     if (expediteur) filter.expediteur = expediteur;
     if (search) {
+      const s = escapeRegex(String(search).slice(0, 100));
       filter.$or = [
-        { titre:        { $regex: search, $options: 'i' } },
-        { description:  { $regex: search, $options: 'i' } },
-        { wilayaDepart: { $regex: search, $options: 'i' } },
-        { wilayaArrivee:{ $regex: search, $options: 'i' } },
-        { villeDepart:  { $regex: search, $options: 'i' } },
-        { villeArrivee: { $regex: search, $options: 'i' } },
+        { titre:        { $regex: s, $options: 'i' } },
+        { description:  { $regex: s, $options: 'i' } },
+        { wilayaDepart: { $regex: s, $options: 'i' } },
+        { wilayaArrivee:{ $regex: s, $options: 'i' } },
+        { villeDepart:  { $regex: s, $options: 'i' } },
+        { villeArrivee: { $regex: s, $options: 'i' } },
       ];
     }
 
