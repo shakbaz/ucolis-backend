@@ -4,6 +4,7 @@ const Conversation = require('../models/Conversation');
 const Message      = require('../models/Message');
 const auth         = require('../middleware/auth');
 const { createNotification } = require('../utils/notifHelper');
+const { uploadPhoto, uploadToCloudinary } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -134,17 +135,22 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       p => p.toString() !== req.user._id.toString()
     );
 
-    // S'assurer que unreadCount existe pour l'autre participant
-    await Conversation.findByIdAndUpdate(req.params.id, {
-      $set: { dernierMessage: message._id, updatedAt: new Date() },
-      $addToSet: {
-        unreadCount: { user: otherParticipant, count: 0 },
+    // Incrémenter atomiquement si l'entrée existe déjà (opérateur positionnel $)
+    const convUpdated = await Conversation.findOneAndUpdate(
+      { _id: req.params.id, 'unreadCount.user': otherParticipant },
+      {
+        $set: { dernierMessage: message._id, updatedAt: new Date() },
+        $inc: { 'unreadCount.$.count': 1 },
       },
-    });
-    // Incrémenter le compteur
-    await Conversation.findByIdAndUpdate(req.params.id, {
-      $inc: { 'unreadCount.$[elem].count': 1 },
-    }, { arrayFilters: [{ 'elem.user': otherParticipant }] });
+      { new: true }
+    );
+    // Si l'entrée n'existait pas encore, l'ajouter avec count: 1 en une seule opération
+    if (!convUpdated) {
+      await Conversation.findByIdAndUpdate(req.params.id, {
+        $set:  { dernierMessage: message._id, updatedAt: new Date() },
+        $push: { unreadCount: { user: otherParticipant, count: 1 } },
+      });
+    }
 
     const io = req.app.locals.io;
 
@@ -198,27 +204,29 @@ router.post('/conversations/:id/messages', auth, async (req, res) => {
       const Notification = require('../models/Notification');
       const previewContenu = contenu.length > 60 ? contenu.substring(0, 60) + '…' : contenu;
 
-      const existingNotif = await Notification.findOne({
-        destinataire: otherParticipant,
-        type:         'nouveau_message',
-        lu:           false,
-        'data.conversationId': req.params.id,
-      });
-
-      if (existingNotif) {
-        existingNotif.message   = previewContenu;
-        existingNotif.titre     = `💬 ${senderName}`;
-        existingNotif.updatedAt = new Date();
-        await existingNotif.save();
-      } else {
-        await createNotification({
+      // findOneAndUpdate avec upsert = atomique, élimine la race condition créant des doublons
+      await Notification.findOneAndUpdate(
+        {
           destinataire: otherParticipant,
-          type:    'nouveau_message',
-          titre:   `💬 ${senderName}`,
-          message: previewContenu,
-          data:    { conversationId: req.params.id, parcelId: conversation.colis?._id },
-        });
-      }
+          type:         'nouveau_message',
+          lu:           false,
+          'data.conversationId': req.params.id,
+        },
+        {
+          $set: {
+            titre:     `💬 ${senderName}`,
+            message:   previewContenu,
+            updatedAt: new Date(),
+          },
+          $setOnInsert: {
+            data: {
+              conversationId: req.params.id,
+              parcelId:       conversation.colis?._id ?? null,
+            },
+          },
+        },
+        { upsert: true }
+      );
 
       // Émettre new_notification UNIQUEMENT si l'autre n'est pas dans la conv
       // (sinon le badge clignote brièvement avant le reset)
@@ -270,6 +278,96 @@ router.patch('/conversations/:id/read', auth, async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// POST envoyer une image dans une conversation
+router.post('/conversations/:id/messages/image', auth, uploadPhoto, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'Image requise' });
+
+    const conversation = await Conversation.findOne({
+      _id: req.params.id,
+      participants: req.user._id,
+    }).populate('colis', 'titre');
+    if (!conversation) return res.status(404).json({ message: 'Conversation non trouvée' });
+
+    const result = await uploadToCloudinary(req.file.buffer, 'ucolis/chat', {
+      transformation: [{ width: 1200, crop: 'limit', quality: 'auto' }],
+    });
+
+    const message = new Message({
+      conversation: req.params.id,
+      auteur:   req.user._id,
+      contenu:  result.secure_url,
+      type:     'image',
+      luPar:    [req.user._id],
+    });
+    await message.save();
+    await message.populate('auteur', 'prenom nom photoProfil');
+
+    const otherParticipant = conversation.participants.find(
+      p => p.toString() !== req.user._id.toString()
+    );
+
+    // Mise à jour unreadCount (même logique atomique que pour les textes)
+    const convUpdated = await Conversation.findOneAndUpdate(
+      { _id: req.params.id, 'unreadCount.user': otherParticipant },
+      {
+        $set: { dernierMessage: message._id, updatedAt: new Date() },
+        $inc: { 'unreadCount.$.count': 1 },
+      },
+      { new: true }
+    );
+    if (!convUpdated) {
+      await Conversation.findByIdAndUpdate(req.params.id, {
+        $set:  { dernierMessage: message._id, updatedAt: new Date() },
+        $push: { unreadCount: { user: otherParticipant, count: 1 } },
+      });
+    }
+
+    const io = req.app.locals.io;
+    if (io) io.to(req.params.id).emit('new_message', { message });
+
+    let otherIsInConversation = false;
+    if (io) {
+      try {
+        const sockets = await io.in(req.params.id).fetchSockets();
+        const otherIdStr = otherParticipant.toString();
+        otherIsInConversation = sockets.some(
+          s => s.data?.user?.userId?.toString() === otherIdStr
+        );
+      } catch (_) {}
+    }
+
+    if (otherIsInConversation) {
+      await Message.updateOne({ _id: message._id }, { $addToSet: { luPar: otherParticipant } });
+      await Conversation.findByIdAndUpdate(req.params.id, {
+        $set: { 'unreadCount.$[elem].count': 0 },
+      }, { arrayFilters: [{ 'elem.user': otherParticipant }] });
+
+      if (io) {
+        const readAt = new Date().toISOString();
+        io.to(req.params.id).emit('messages_read', { conversationId: req.params.id, readBy: otherParticipant, readAt });
+        io.to(otherParticipant.toString()).emit('messages_read', { conversationId: req.params.id, readBy: otherParticipant, readAt });
+      }
+    } else {
+      const senderName = `${req.user.prenom} ${req.user.nom}`;
+      const Notification = require('../models/Notification');
+      await Notification.findOneAndUpdate(
+        { destinataire: otherParticipant, type: 'nouveau_message', lu: false, 'data.conversationId': req.params.id },
+        {
+          $set: { titre: `💬 ${senderName}`, message: '📷 Image', updatedAt: new Date() },
+          $setOnInsert: { data: { conversationId: req.params.id, parcelId: conversation.colis?._id ?? null } },
+        },
+        { upsert: true }
+      );
+      if (io) io.to(otherParticipant.toString()).emit('new_notification', { conversationId: req.params.id });
+    }
+
+    res.status(201).json(message);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 });
 
