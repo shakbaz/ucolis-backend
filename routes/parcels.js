@@ -72,16 +72,17 @@ router.get('/', async (req, res) => {
       ];
     }
 
-    const skip  = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip  = (Number(page) - 1) * safeLimit;
     const total = await Parcel.countDocuments(filter);
     const parcels = await Parcel.find(filter)
       .populate('expediteur',        'prenom nom photoProfil wilaya moyenne totalAvis typeCompte documents')
       .populate('transporteurAccepte','prenom nom photoProfil wilaya moyenne')
       .sort({ [sortBy]: -1 })
       .skip(skip)
-      .limit(Number(limit));
+      .limit(safeLimit);
 
-    res.json({ parcels, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+    res.json({ parcels, total, page: Number(page), totalPages: Math.ceil(total / safeLimit) });
   } catch (error) {
     res.status(500).json({ message: 'Erreur serveur' });
   }

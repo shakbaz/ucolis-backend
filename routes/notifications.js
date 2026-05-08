@@ -8,7 +8,8 @@ const router = express.Router();
 router.get('/', auth, async (req, res) => {
   try {
     const { page = 1, limit = 20, lu } = req.query;
-    const skip   = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip   = (Number(page) - 1) * safeLimit;
     const filter = { destinataire: req.user._id };
     if (lu !== undefined) filter.lu = lu === 'true';
 
@@ -16,7 +17,7 @@ router.get('/', auth, async (req, res) => {
       Notification.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
+        .limit(safeLimit)
         .populate('data.parcelId', 'titre wilayaDepart wilayaArrivee')
         .populate('data.userId',   'prenom nom photoProfil'),
       Notification.countDocuments(filter),
@@ -26,9 +27,9 @@ router.get('/', auth, async (req, res) => {
     res.json({
       notifications,
       total,
-      nonLues,   // ✅ badge compteur
+      nonLues,
       page: Number(page),
-      totalPages: Math.ceil(total / Number(limit)),
+      totalPages: Math.ceil(total / safeLimit),
     });
   } catch (err) {
     res.status(500).json({ message: err.message });

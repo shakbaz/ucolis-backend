@@ -24,7 +24,8 @@ router.get('/me', auth, async (req, res) => {
 router.get('/me/avis', auth, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
-    const skip  = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip  = (Number(page) - 1) * safeLimit;
 
     const [avis, total] = await Promise.all([
       Review.find({ destinataire: req.user._id })
@@ -32,7 +33,7 @@ router.get('/me/avis', auth, async (req, res) => {
         .populate('colis', 'titre villeDepart villeArrivee')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       Review.countDocuments({ destinataire: req.user._id }),
     ]);
 
@@ -45,7 +46,7 @@ router.get('/me/avis', auth, async (req, res) => {
       moyenne:    user?.moyenne    || 0,
       totalAvis:  user?.totalAvis  || 0,
       page:       Number(page),
-      totalPages: Math.ceil(total / Number(limit)),
+      totalPages: Math.ceil(total / safeLimit),
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -72,14 +73,17 @@ router.put('/profile', auth, async (req, res) => {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
 
+    const VALID_ROLES = ['sender', 'carrier', 'both'];
+    const VALID_TYPES = ['particulier', 'professionnel'];
+
     if (prenom)              user.prenom    = prenom.trim();
     if (nom)                 user.nom       = nom.trim();
     if (telephone)           user.telephone = telephone.trim();
     if (wilaya)              user.wilaya    = wilaya;
     if (ville !== undefined) user.ville     = ville;
     if (bio   !== undefined) user.bio       = bio.trim();
-    if (role)                user.role       = role;
-    if (typeCompte)          user.typeCompte = typeCompte;
+    if (role      && VALID_ROLES.includes(role))      user.role      = role;
+    if (typeCompte && VALID_TYPES.includes(typeCompte)) user.typeCompte = typeCompte;
 
     user.lastSeen = new Date();
     await user.save();
@@ -116,8 +120,8 @@ router.put('/password', auth, async (req, res) => {
     const { ancienMotDePasse, nouveauMotDePasse } = req.body;
     if (!ancienMotDePasse || !nouveauMotDePasse)
       return res.status(400).json({ message: 'Les deux champs sont requis' });
-    if (nouveauMotDePasse.length < 6)
-      return res.status(400).json({ message: 'Minimum 6 caractères' });
+    if (nouveauMotDePasse.length < 8)
+      return res.status(400).json({ message: 'Minimum 8 caractères' });
 
     const user = await User.findById(req.user._id).select('+motDePasse');
     const ok   = await user.comparePassword(ancienMotDePasse);

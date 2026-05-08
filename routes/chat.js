@@ -70,7 +70,8 @@ router.get('/conversations/:id', auth, async (req, res) => {
 router.get('/conversations/:id/messages', auth, async (req, res) => {
   try {
     const { page = 1, limit = 30 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const conversation = await Conversation.findOne({
       _id: req.params.id,
@@ -83,7 +84,7 @@ router.get('/conversations/:id/messages', auth, async (req, res) => {
         .populate('auteur', 'prenom nom photoProfil')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       Message.countDocuments({ conversation: req.params.id }),
     ]);
 

@@ -59,6 +59,9 @@ router.post(ENDPOINTS.REGISTER, async (req, res) => {
     if (!prenom || !nom || !email || !motDePasse || !telephone || !wilaya || !ville) {
       return res.status(400).json({ message: 'Tous les champs obligatoires doivent être remplis' });
     }
+    if (motDePasse.length < 8) {
+      return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 8 caractères' });
+    }
 
     const existingUser = await User.findOne({
       $or: [
@@ -74,6 +77,9 @@ router.post(ENDPOINTS.REGISTER, async (req, res) => {
       return res.status(400).json({ message: 'Téléphone déjà utilisé' });
     }
 
+    const VALID_ROLES = ['sender', 'carrier', 'both'];
+    const VALID_TYPES = ['particulier', 'professionnel'];
+
     const user = new User({
       prenom:     prenom.trim(),
       nom:        nom.trim(),
@@ -82,8 +88,8 @@ router.post(ENDPOINTS.REGISTER, async (req, res) => {
       telephone,
       wilaya,
       ville,
-      role:        role       || 'sender',
-      typeCompte:  typeCompte || 'particulier',
+      role:       (role && VALID_ROLES.includes(role)) ? role : 'sender',
+      typeCompte: (typeCompte && VALID_TYPES.includes(typeCompte)) ? typeCompte : 'particulier',
     });
 
     await user.save();
@@ -175,6 +181,9 @@ router.post(ENDPOINTS.FORGOT_PASSWORD, async (req, res) => {
 router.post(ENDPOINTS.RESET_PASSWORD, async (req, res) => {
   try {
     const { token, nouveauMotDePasse } = req.body;
+    if (!nouveauMotDePasse || nouveauMotDePasse.length < 8) {
+      return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 8 caractères' });
+    }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findOne({

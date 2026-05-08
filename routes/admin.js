@@ -76,7 +76,8 @@ router.get('/stats', adminAuth, async (req, res) => {
 router.get('/users', adminAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, search = '', role = '', actif = '' } = req.query;
-    const skip   = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip   = (Number(page) - 1) * safeLimit;
 
     const filter = { isAdmin: false };
     if (search) {
@@ -96,11 +97,11 @@ router.get('/users', adminAuth, async (req, res) => {
         .select('-motDePasse')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       User.countDocuments(filter),
     ]);
 
-    res.json({ users, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+    res.json({ users, total, page: Number(page), totalPages: Math.ceil(total / safeLimit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -151,6 +152,10 @@ router.patch('/users/:id/toggle-ban', adminAuth, async (req, res) => {
 // PATCH /admin/users/:id/promote — promouvoir / rétrograder admin
 router.patch('/users/:id/promote', adminAuth, async (req, res) => {
   try {
+    if (req.params.id === req.user._id.toString()) {
+      return res.status(403).json({ message: 'Impossible de modifier ses propres droits admin' });
+    }
+
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
 
@@ -193,7 +198,8 @@ router.delete('/users/:id', adminAuth, async (req, res) => {
 router.get('/documents', adminAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, statut = 'en_attente' } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const filter = {};
     if (statut) filter['documents.statut'] = statut;
@@ -204,11 +210,11 @@ router.get('/documents', adminAuth, async (req, res) => {
         .select('prenom nom email photoProfil telephone wilaya documents createdAt')
         .sort({ 'documents.updatedAt': -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       User.countDocuments(filter),
     ]);
 
-    res.json({ users, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+    res.json({ users, total, page: Number(page), totalPages: Math.ceil(total / safeLimit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -257,7 +263,8 @@ router.patch('/users/:id/validate-docs', adminAuth, async (req, res) => {
 router.get('/parcels', adminAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, statut = '', search = '' } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const filter = {};
     if (statut) filter.statut = statut;
@@ -276,11 +283,11 @@ router.get('/parcels', adminAuth, async (req, res) => {
         .populate('transporteurAccepte', 'prenom nom email photoProfil')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       Parcel.countDocuments(filter),
     ]);
 
-    res.json({ parcels, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+    res.json({ parcels, total, page: Number(page), totalPages: Math.ceil(total / safeLimit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -329,7 +336,8 @@ router.delete('/parcels/:id', adminAuth, async (req, res) => {
 router.get('/reviews', adminAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const [reviews, total] = await Promise.all([
       Review.find()
@@ -338,11 +346,11 @@ router.get('/reviews', adminAuth, async (req, res) => {
         .populate('colis',        'titre villeDepart villeArrivee')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       Review.countDocuments(),
     ]);
 
-    res.json({ reviews, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+    res.json({ reviews, total, page: Number(page), totalPages: Math.ceil(total / safeLimit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -390,14 +398,15 @@ router.get('/conversations/between/:u1/:u2', adminAuth, async (req, res) => {
 router.get('/conversations', adminAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, search } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     let conversations = await Conversation.find()
       .populate('participants', 'prenom nom photoProfil')
       .populate('dernierMessage')
       .sort({ updatedAt: -1 })
       .skip(skip)
-      .limit(Number(limit));
+      .limit(safeLimit);
 
     const total = await Conversation.countDocuments();
 
@@ -418,13 +427,14 @@ router.get('/conversations', adminAuth, async (req, res) => {
 router.get('/conversations/:id/messages', adminAuth, async (req, res) => {
   try {
     const { page = 1, limit = 100 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 200);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const [messages, total, conversation] = await Promise.all([
       Message.find({ conversation: req.params.id })
         .populate('auteur', 'prenom nom photoProfil')
         .sort({ createdAt: 1 })
-        .skip(skip).limit(Number(limit)),
+        .skip(skip).limit(safeLimit),
       Message.countDocuments({ conversation: req.params.id }),
       Conversation.findById(req.params.id)
         .populate('participants', 'prenom nom photoProfil'),

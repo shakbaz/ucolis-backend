@@ -118,8 +118,13 @@ router.patch('/:id/accept', auth, async (req, res) => {
       return res.status(403).json({ message: 'Non autorisé' });
     }
 
+    // Mise à jour atomique — évite la double-acceptation en cas de requêtes simultanées
+    const atomicUpdate = await Offer.findOneAndUpdate(
+      { _id: offer._id, statut: { $in: [OFFER_STATUS.EN_ATTENTE, OFFER_STATUS.CONTRE_OFFRE] } },
+      { $set: { statut: OFFER_STATUS.ACCEPTE } }
+    );
+    if (!atomicUpdate) return res.status(409).json({ message: 'Cette offre a déjà été traitée' });
     offer.statut = OFFER_STATUS.ACCEPTE;
-    await offer.save();
 
     // Récupérer les autres offres AVANT de les refuser pour avoir les transporteurs
     const otherOffers = await Offer.find({
@@ -280,10 +285,14 @@ router.patch('/:id/accept-counter', auth, async (req, res) => {
 
     const parcel = await Parcel.findById(offer.colis._id).populate('expediteur', 'prenom nom');
 
-    // Accepter au prix de la contre-offre
-    offer.statut     = OFFER_STATUS.ACCEPTE;
+    // Mise à jour atomique — évite la double-acceptation en cas de requêtes simultanées
+    const atomicUpdate = await Offer.findOneAndUpdate(
+      { _id: offer._id, statut: OFFER_STATUS.CONTRE_OFFRE },
+      { $set: { statut: OFFER_STATUS.ACCEPTE, prixPropose: offer.contreOffre.prix } }
+    );
+    if (!atomicUpdate) return res.status(409).json({ message: 'Cette offre a déjà été traitée' });
+    offer.statut      = OFFER_STATUS.ACCEPTE;
     offer.prixPropose = offer.contreOffre.prix;
-    await offer.save();
 
     // Récupérer les autres offres actives AVANT de les refuser
     const otherOffersCounter = await Offer.find({

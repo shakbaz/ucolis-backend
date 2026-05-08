@@ -99,16 +99,17 @@ router.get('/check/:colisId', auth, async (req, res) => {
 router.get('/user/:userId', async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
-    const skip  = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip  = (Number(page) - 1) * safeLimit;
     const total = await Review.countDocuments({ destinataire: req.params.userId });
     const avis  = await Review.find({ destinataire: req.params.userId })
       .populate('auteur', 'prenom nom photoProfil')
       .populate('colis', 'titre wilayaDepart wilayaArrivee')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit));
+      .limit(safeLimit);
 
-    res.json({ avis, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+    res.json({ avis, total, page: Number(page), totalPages: Math.ceil(total / safeLimit) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

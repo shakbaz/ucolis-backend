@@ -52,7 +52,8 @@ router.post('/', auth, async (req, res) => {
 router.get('/', adminAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20, statut = '' } = req.query;
-    const skip   = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Number(limit), 100);
+    const skip   = (Number(page) - 1) * safeLimit;
     const filter = statut ? { statut } : {};
 
     const [reports, total] = await Promise.all([
@@ -65,11 +66,11 @@ router.get('/', adminAuth, async (req, res) => {
         .populate('traitePar',   'prenom nom')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       Report.countDocuments(filter),
     ]);
 
-    res.json({ reports, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+    res.json({ reports, total, page: Number(page), totalPages: Math.ceil(total / safeLimit) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
